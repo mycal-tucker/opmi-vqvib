@@ -18,13 +18,10 @@ class Decoder(nn.Module):
             in_dim = out_dim
             out_dim = self.hidden_dim
         self.fc_mu = nn.Linear(self.hidden_dim, recons_dim)
-        self.fc_var = nn.Linear(self.hidden_dim, recons_dim)
 
     def forward(self, x):
         for i, layer in enumerate(self.layers):
             x = layer(x)
             x = F.relu(x)
-        # Now output a mu and sigma for reconstruction
         mu = self.fc_mu(x)
-        logvar = self.fc_var(x)
-        return mu, logvar
+        return mu
