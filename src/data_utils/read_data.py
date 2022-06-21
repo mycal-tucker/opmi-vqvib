@@ -4,6 +4,7 @@ import shutil
 import sys
 import time
 from multiprocessing.pool import ThreadPool
+from torchvision import transforms
 
 import numpy as np
 import pandas as pd
@@ -61,12 +62,12 @@ def download_img():
         existing_ids.append(existing_img.split('.')[0])
     inputs = []
     id_to_url = {}
-    for url, img_id in zip(manynames['link_mn'], manynames['vg_image_id']):
+    for url, img_id in zip(manynames[url_fieldname], manynames['vg_image_id']):
         id_to_url[img_id] = url
         if str(img_id) in existing_ids:
             # print("Skipping", img_id)
             continue
-        inputs.append((url, image_directory + str(img_id) + '.png'))
+        inputs.append((url, image_directory + str(img_id) + suffix))
     print("Total number to do", len(inputs))
     download_parallel(inputs)
     return id_to_url
@@ -74,38 +75,65 @@ def download_img():
 
 def img_features(id_to_url):
     # Get a pretrained model
-    resnet18 = models.resnet18(pretrained=True)
-    modules = list(resnet18.children())[:-1]
-    resnet18 = nn.Sequential(*modules)
-    for p in resnet18.parameters():
+    feature_extractor = models.resnet18(pretrained=True)
+    feature_extractor.eval()
+    # feature_extractor = models.resnet50(pretrained=True)
+    modules = list(feature_extractor.children())[:-1]
+    feature_extractor = nn.Sequential(*modules)
+    for p in feature_extractor.parameters():
         p.requires_grad = False
     count = 0
-    for img in os.listdir(image_directory):
+    preprocess = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    for img in sorted(os.listdir(image_directory)):
         print("reading", img, "number", count, "of", len(manynames))
         count += 1
+        # if count == 1000:
+        #     break
         pil_image = Image.open(image_directory + img)
+        array_version = np.array(pil_image)
+        if array_version.shape[-1] != 3:
+            print("Skipping")
+            continue
         try:
-            pil_image = pil_image.resize((224, 224))
+            input_tensor = preprocess(pil_image)
         except OSError:
             print("Downloading replacement for truncated image")
             img_id = int(img.split('.')[0])
-            download_url((id_to_url.get(img_id), image_directory + str(img_id) + '.png'))
+            download_url((id_to_url.get(img_id), image_directory + str(img_id) + suffix))
             pil_image = Image.open(image_directory + img)
-            pil_image = pil_image.resize((224, 224))
-        image = np.asarray(pil_image)[:, :, :-1]
-        img_tensor = np.moveaxis(image, -1, 0)
-        img_tensor = torch.Tensor(img_tensor)
+            input_tensor = preprocess(pil_image)
+        img_tensor = input_tensor
         img_tensor = torch.unsqueeze(img_tensor, 0)  # Batch size 1
-        features = resnet18(img_tensor)[0, :, 0, 0]
-        with open('data/features.csv', 'a') as f:
+        all_features = feature_extractor(img_tensor)
+        features = all_features[0, :, 0, 0]
+        with open(features_filename, 'a') as f:
             f.write(img.split('.')[0] + ', ')
             f.write(', '.join([str(e) for e in features.cpu().detach().numpy()]))
             f.write('\n')
 
 
+def get_feature_data(filename):
+    features = []
+    with open(filename, 'r') as f:
+        for line in f:
+            list_data = eval(line)
+            # Ignore first entry, which is an id.
+            features.append(list_data[1:])
+    return features
+
+
 # %% ---- DIRECTLY RUN
 if __name__ == "__main__":
-    image_directory = 'data/images/'
+    with_bbox = False
+    image_directory = 'data/images/' if with_bbox else 'data/images_nobox/'
+    url_fieldname = 'link_mn' if with_bbox else 'link_vg'
+    suffix = '.png' if with_bbox else '.jpg'
+    features_filename = 'data/features.csv' if with_bbox else 'data/features_nobox.csv'
     if len(sys.argv) > 1:
         fn = sys.argv[1]
     else:
