@@ -1,11 +1,14 @@
 # conll_vqvib
 
+All scripts should be run from the root directory, i.e. ``conll_vqvib``
+
 ## Downloading the data
 
 This code is built to run on the ManyNames dataset.
 The repo includes a tsv file that describes the dataset, but the raw images need to be downloaded.
 Download the images via the src/data_utils/read_data.py script.
 That script will iterate over the tsv file, downloading images from the url, and then extract features by passing the images through a resnet.
+Get the tsv file from the manynames repo (https://raw.githubusercontent.com/amore-upf/manynames/master/manynames.tsv) and put it under ``conll_vqvib/data``
 
 The key variable to toggle inside the script is with_bbox, which specifies whether images should be downloaded with or without their bounding boxes.
 
