@@ -11,6 +11,7 @@ import torch.optim as optim
 import numpy as np
 from src.data_utils.helper_fns import gen_batch
 from src.utils.mine import get_info
+from src.utils.plotting import plot_metrics
 
 
 def evaluate(model, dataset):
@@ -25,7 +26,9 @@ def evaluate(model, dataset):
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
         num_correct += np.sum(pred_labels == labels.cpu().numpy())
         num_total += pred_labels.size
-    print("Evaluation accuracy", num_correct / num_total)
+    acc = num_correct / num_total
+    print("Evaluation accuracy", acc)
+    return acc
 
 
 # Manually calculate the complexity of communication by sampling some inputs and comparing the conditional communication
@@ -57,6 +60,8 @@ def train(model, train_data, val_data):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
     running_acc = 0
+    metric_labels = ['train_acc', 'val_acc', 'complexity (nats)', 'informativeness (nats)']
+    metrics = []
     for epoch in range(num_epochs):
         settings.kl_weight += kl_incr
         print('epoch', epoch, 'of', num_epochs)
@@ -83,7 +88,7 @@ def train(model, train_data, val_data):
 
         # Evaluate on the validation set
         if epoch % val_period == val_period - 1:
-            evaluate(model, val_data)
+            val_acc = evaluate(model, val_data)
             # And calculate efficiency values like complexity and informativeness.
             # Can estimate complexity by sampling inputs and measuring communication probabilities.
             # get_probs(model.speaker, train_data)
@@ -92,6 +97,8 @@ def train(model, train_data, val_data):
             informativeness = get_info(model, train_data, num_distractors, targ_dim=feature_len, comm_targ=False)
             print("Complexity", complexity)
             print("Informativeness", informativeness)
+            metrics.append([running_acc, val_acc, complexity, informativeness])
+            plot_metrics(metrics, metric_labels)
 
 
 def run():
