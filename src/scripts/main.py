@@ -36,7 +36,21 @@ def gen_batch(all_features):
     return speaker_tensor, listener_tensor, label_tensor
 
 
-def train(model, data):
+def evaluate(model, dataset):
+    model.eval()
+    num_test_batches = 20
+    num_correct = 0
+    num_total = 0
+    for _ in range(num_test_batches):
+        speaker_obs, listener_obs, labels = gen_batch(dataset)
+        with torch.no_grad():
+            outputs, _, _, _ = model(speaker_obs, listener_obs)
+        pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
+        num_correct += np.sum(pred_labels == labels.cpu().numpy())
+        num_total += pred_labels.size
+    print("Evaluation accuracy", num_correct / num_total)
+
+def train(model, train_data, val_data):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
     running_acc = 0
@@ -44,7 +58,7 @@ def train(model, data):
         settings.kl_weight += kl_incr
         print('epoch', epoch, 'of', num_epochs)
         print("Kl weight", settings.kl_weight)
-        speaker_obs, listener_obs, labels = gen_batch(data)
+        speaker_obs, listener_obs, labels = gen_batch(train_data)
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
         loss = criterion(outputs, labels)
@@ -64,18 +78,24 @@ def train(model, data):
         running_acc = running_acc * 0.95 + 0.05 * num_correct / num_total
         print("Running acc", running_acc)
 
+        # Evaluate on the validation set
+        if epoch % val_period == val_period - 1:
+            evaluate(model, val_data)
+
 
 def run():
     speaker_inp_dim = feature_len if not see_distractor else (num_distractors + 1) * feature_len
-    # speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=False, variational=variational)
-    speaker = VQ(speaker_inp_dim, comm_dim, num_layers=3, num_protos=330, variational=variational)
+    speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=False, variational=variational)
+    # speaker = VQ(speaker_inp_dim, comm_dim, num_layers=3, num_protos=330, variational=variational)
     listener = Listener(comm_dim, feature_len, num_distractors + 1, num_layers=2)
     decoder = Decoder(comm_dim, speaker_inp_dim, num_layers=3)
     model = Team(speaker, listener, decoder)
     model.to(settings.device)
 
-    all_features = get_feature_data(features_filename)
-    train(model, all_features)
+    train_data = get_feature_data(features_filename, excluded_names=val_classes + test_classes)
+    val_data = get_feature_data(features_filename, desired_names=val_classes)
+    test_data = get_feature_data(features_filename, desired_names=test_classes)
+    train(model, train_data['features'], val_data['features'])
 
 
 if __name__ == '__main__':
@@ -83,6 +103,7 @@ if __name__ == '__main__':
     see_distractor = False
     num_distractors = 1
     num_epochs = 5000
+    val_period = 20  # How often to test on the validation set
     batch_size = 1024
     comm_dim = 32
     kl_incr = 0.00001
@@ -93,5 +114,7 @@ if __name__ == '__main__':
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.learned_marginal = False
     with_bbox = False
+    val_classes = ['car', 'carpet']
+    test_classes = ['couch', 'counter', 'bowl']
     features_filename = 'data/features.csv' if with_bbox else 'data/features_nobox.csv'
     run()

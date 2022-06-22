@@ -117,14 +117,25 @@ def img_features(id_to_url):
             f.write('\n')
 
 
-def get_feature_data(filename):
-    features = []
+def get_feature_data(filename, desired_names=[], excluded_names=[]):
+    # Merge the feature data with the dataset data.
+    manynames = load_cleaned_results(filename='data/manynames.tsv')
+    data_rows = []
     with open(filename, 'r') as f:
         for line in f:
             list_data = eval(line)
-            # Ignore first entry, which is an id.
-            features.append(list_data[1:])
-    return features
+            data_rows.append((list_data[0], list_data[1:]))
+    feature_df = pd.DataFrame(data_rows, columns=['vg_image_id', 'features'])
+    merged_df = pd.merge(feature_df, manynames, on=['vg_image_id'])
+    if len(desired_names) == 0 and len(excluded_names) == 0:
+        return merged_df
+    assert len(desired_names) == 0 or len(excluded_names) == 0, "Can't specify both include and exclude"
+    if len(desired_names) > 0:
+        merged_df = merged_df[merged_df['topname'].isin(desired_names)]
+    else:
+        merged_df = merged_df[~merged_df['topname'].isin(desired_names)]
+    merged_df.reset_index(inplace=True)
+    return merged_df
 
 
 # %% ---- DIRECTLY RUN
