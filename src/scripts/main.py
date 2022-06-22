@@ -9,31 +9,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-
-
-def gen_batch(all_features):
-    # Given the dataset of all features, creates a batch of inputs.
-    # That's:
-    # 1) The speaker's observation
-    # 2) The listener's observation
-    # 3) The label (which is the index of the speaker's observation).
-    speaker_obs = []
-    listener_obs = []
-    labels = []
-    for _ in range(batch_size):
-        targ_idx = int(np.random.random() * len(all_features))
-        targ_features = all_features[targ_idx]
-        distractor_features = [all_features[int(np.random.random() * len(all_features))] for _ in range(num_distractors)]
-        obs_targ_idx = int(np.random.random() * (num_distractors + 1))  # Pick where to slide the target observation into.
-
-        speaker_obs.append(targ_features)
-        l_obs = np.expand_dims(np.vstack(distractor_features[:obs_targ_idx] + [targ_features] + distractor_features[obs_targ_idx:]), axis=0)
-        listener_obs.append(l_obs)
-        labels.append(obs_targ_idx)
-    speaker_tensor = torch.Tensor(np.vstack(speaker_obs)).to(settings.device)
-    listener_tensor = torch.Tensor(np.vstack(listener_obs)).to(settings.device)
-    label_tensor = torch.Tensor(labels).long().to(settings.device)
-    return speaker_tensor, listener_tensor, label_tensor
+from src.data_utils.helper_fns import gen_batch
+from src.utils.mine import get_info
 
 
 def evaluate(model, dataset):
@@ -42,13 +19,39 @@ def evaluate(model, dataset):
     num_correct = 0
     num_total = 0
     for _ in range(num_test_batches):
-        speaker_obs, listener_obs, labels = gen_batch(dataset)
+        speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, num_distractors)
         with torch.no_grad():
             outputs, _, _, _ = model(speaker_obs, listener_obs)
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
         num_correct += np.sum(pred_labels == labels.cpu().numpy())
         num_total += pred_labels.size
     print("Evaluation accuracy", num_correct / num_total)
+
+
+# Manually calculate the complexity of communication by sampling some inputs and comparing the conditional communication
+# to the marginal communication.
+def get_probs(speaker, dataset):
+    num_samples = 1000
+    w_m = np.zeros((num_samples, speaker.num_tokens))
+    for i in range(num_samples):
+        speaker_obs, _, _ = gen_batch(dataset, batch_size=1, num_distractors=num_distractors)
+        with torch.no_grad():
+            likelihoods = speaker.get_token_dist(speaker_obs)
+        w_m[i] = likelihoods
+    # Calculate the divergence from the marginal over tokens. Here we just calculate the marginal
+    # from observations.
+    marginal = np.average(w_m, axis=0)
+    complexities = []
+    for likelihood in w_m:
+        summed = 0
+        for l, p in zip(likelihood, marginal):
+            if l == 0:
+                continue
+            summed += l * (np.log(l) - np.log(p))
+        complexities.append(summed)
+    comp = np.average(complexities)  # Note that this is in nats (not bits)
+    print("Sampled communication complexity", comp)
+
 
 def train(model, train_data, val_data):
     criterion = nn.CrossEntropyLoss()
@@ -58,7 +61,7 @@ def train(model, train_data, val_data):
         settings.kl_weight += kl_incr
         print('epoch', epoch, 'of', num_epochs)
         print("Kl weight", settings.kl_weight)
-        speaker_obs, listener_obs, labels = gen_batch(train_data)
+        speaker_obs, listener_obs, labels = gen_batch(train_data, batch_size, num_distractors)
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
         loss = criterion(outputs, labels)
@@ -81,12 +84,20 @@ def train(model, train_data, val_data):
         # Evaluate on the validation set
         if epoch % val_period == val_period - 1:
             evaluate(model, val_data)
+            # And calculate efficiency values like complexity and informativeness.
+            # Can estimate complexity by sampling inputs and measuring communication probabilities.
+            # get_probs(model.speaker, train_data)
+            # Or we can use MINE to estimate complexity and informativeness.
+            complexity = get_info(model, train_data, num_distractors, targ_dim=comm_dim, comm_targ=True)
+            informativeness = get_info(model, train_data, num_distractors, targ_dim=feature_len, comm_targ=False)
+            print("Complexity", complexity)
+            print("Informativeness", informativeness)
 
 
 def run():
     speaker_inp_dim = feature_len if not see_distractor else (num_distractors + 1) * feature_len
-    speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=False, variational=variational)
-    # speaker = VQ(speaker_inp_dim, comm_dim, num_layers=3, num_protos=330, variational=variational)
+    # speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=True, variational=variational)
+    speaker = VQ(speaker_inp_dim, comm_dim, num_layers=3, num_protos=330, variational=variational)
     listener = Listener(comm_dim, feature_len, num_distractors + 1, num_layers=2)
     decoder = Decoder(comm_dim, speaker_inp_dim, num_layers=3)
     model = Team(speaker, listener, decoder)
@@ -103,14 +114,15 @@ if __name__ == '__main__':
     see_distractor = False
     num_distractors = 1
     num_epochs = 5000
-    val_period = 20  # How often to test on the validation set
+    val_period = 100  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 32
-    kl_incr = 0.00001
+    # kl_incr = 0.00001
+    kl_incr = 0.0
     variational = True
     settings.alpha = 1
     settings.sample_first = True
-    settings.kl_weight = 0.0
+    settings.kl_weight = 0.00001
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.learned_marginal = False
     with_bbox = False
