@@ -40,7 +40,7 @@ class VQLayer(nn.Module):
         # ideas from get_token_dist() at the bottom of this file to get the actual distribution and entropy.
         # Yeah, truly, this should be a quick change
         ent = self.get_categorical_ent(dists_to_protos)
-        vq_loss += 0.00 * ent  # Default weight is 0.05
+        vq_loss += 0.01 * ent  # Default weight is 0.05
 
         # Add the residue back to the latents
         quantized_latents = latents + (quantized_latents - latents).detach()

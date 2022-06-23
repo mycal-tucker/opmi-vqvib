@@ -1,4 +1,4 @@
-# %% ---- DEPENDENCIES
+import csv
 import os
 import shutil
 import sys
@@ -144,6 +144,10 @@ def get_feature_data(filename, desired_names=[], excluded_names=[], max_per_clas
         merged_df = merged_df[~merged_df['topname'].isin(desired_names)]
     merged_df.reset_index(inplace=True)
     return merged_df
+
+
+def get_glove_vectors():
+    return pd.read_table('data/glove.6B.100d.txt', sep=" ", index_col=0, header=None, quoting=csv.QUOTE_NONE)
 
 
 # %% ---- DIRECTLY RUN

@@ -4,14 +4,16 @@ from src.models.mlp import MLP
 from src.models.listener import Listener
 from src.models.decoder import Decoder
 import src.settings as settings
-from src.data_utils.read_data import get_feature_data
+from src.data_utils.read_data import get_feature_data, get_glove_vectors
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from src.data_utils.helper_fns import gen_batch
+from src.data_utils.helper_fns import gen_batch, get_glove_embedding
 from src.utils.mine import get_info
 from src.utils.plotting import plot_metrics, plot_tsne, plot_mds
+from sklearn.metrics import r2_score
+from sklearn.linear_model import LinearRegression
 
 
 def evaluate(model, dataset):
@@ -32,11 +34,10 @@ def evaluate(model, dataset):
 
 
 def plot_comms(model, dataset):
-    model.eval()
     num_tests = 100
     labels = []
     for f in dataset:
-        speaker_obs = torch.Tensor(np.array(f)).to(settings.device)  # FIXME. tensor?
+        speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
         speaker_obs = torch.unsqueeze(speaker_obs, 0)
         speaker_obs = speaker_obs.repeat(num_tests, 1)
         likelihoods = model.speaker.get_token_dist(speaker_obs)
@@ -62,6 +63,42 @@ def plot_comms(model, dataset):
     plot_mds(regrouped_data, labels=plot_labels, savepath='training_mds')
     plot_tsne(regrouped_data, labels=plot_labels, savepath='training_tsne')
 
+
+def get_embedding_alignment(model, dataset):
+    num_tests = 100
+    comms = []
+    embeddings = []
+    features = []
+    for f, word in zip(dataset['features'], dataset['topname']):
+        speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
+        speaker_obs = torch.unsqueeze(speaker_obs, 0)
+        with torch.no_grad():
+            speaker_obs = speaker_obs.repeat(num_tests, 1)
+        comm, _, _ = model.speaker(speaker_obs)
+        comms.append(np.mean(comm.detach().cpu().numpy(), axis=0))
+        embeddings.append(get_glove_embedding(glove_data, word).to_numpy())
+        features.append(np.array(f))
+    comms = np.vstack(comms)
+    embeddings = np.vstack(embeddings)
+    # Now just find a linear mapping from comms to embeddings.
+    reg = LinearRegression()
+    reg.fit(comms, embeddings)
+    predictions = reg.predict(comms)
+    comm_to_embed_r2 = r2_score(embeddings, predictions)
+    print("Comm to word embedding regression score\t\t", comm_to_embed_r2)
+    # And compute regression between pairwise distances in feature space and comm space.
+    comm_dists = np.zeros((len(comms), len(comms)))
+    feature_dists = np.zeros((len(comms), len(comms)))
+    for i, c1 in enumerate(comms):
+        for j, c2 in enumerate(comms):
+            comm_dists[i, j] = np.linalg.norm(c1 - c2)
+            feature_dists[i, j] = np.linalg.norm(features[i] - features[j])
+    reg = LinearRegression()
+    reg.fit(comm_dists, feature_dists)
+    predictions = reg.predict(comm_dists)
+    pairwise_r2 = r2_score(feature_dists, predictions)
+    print("Pairwise dist regression score", pairwise_r2)
+    return comm_to_embed_r2, pairwise_r2
 
 # Manually calculate the complexity of communication by sampling some inputs and comparing the conditional communication
 # to the marginal communication.
@@ -89,6 +126,7 @@ def get_probs(speaker, dataset):
 
 
 def train(model, train_data, val_data, viz_data):
+    train_features = train_data['features']
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
     running_acc = 0
@@ -98,18 +136,18 @@ def train(model, train_data, val_data, viz_data):
         settings.kl_weight += kl_incr
         print('epoch', epoch, 'of', num_epochs)
         print("Kl weight", settings.kl_weight)
-        speaker_obs, listener_obs, labels = gen_batch(train_data, batch_size, num_distractors)
+        speaker_obs, listener_obs, labels = gen_batch(train_features, batch_size, num_distractors)
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
         loss = criterion(outputs, labels)
-        print("Classification loss", loss)
+        # print("Classification loss", loss)
         recons_loss = torch.mean(((speaker_obs - recons) ** 2))
-        print("Recons loss", recons_loss)
+        # print("Recons loss", recons_loss)
         loss += settings.alpha * recons_loss
         loss += speaker_loss
         loss.backward()
         optimizer.step()
-        print("Loss", loss)
+        # print("Loss", loss)
 
         # Metrics
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
@@ -120,15 +158,17 @@ def train(model, train_data, val_data, viz_data):
 
         if epoch % val_period == val_period - 1:
             # Evaluate on the validation set
-            val_acc = evaluate(model, val_data)
+            val_acc = evaluate(model, val_data['features'])
             # Visualize some of the communication
-            plot_comms(model, viz_data)
+            plot_comms(model, viz_data['features'])
+            # And compare to english word embeddings
+            word_embed_r2, pairwise_r2 = get_embedding_alignment(model, viz_data)
             # And calculate efficiency values like complexity and informativeness.
             # Can estimate complexity by sampling inputs and measuring communication probabilities.
             # get_probs(model.speaker, train_data)
             # Or we can use MINE to estimate complexity and informativeness.
-            complexity = get_info(model, train_data, num_distractors, targ_dim=comm_dim, comm_targ=True)
-            informativeness = get_info(model, train_data, num_distractors, targ_dim=feature_len, comm_targ=False)
+            complexity = get_info(model, train_features, num_distractors, targ_dim=comm_dim, comm_targ=True)
+            informativeness = get_info(model, train_features, num_distractors, targ_dim=feature_len, comm_targ=False)
             print("Complexity", complexity)
             print("Informativeness", informativeness)
             metrics.append([running_acc, val_acc, complexity, informativeness])
@@ -144,11 +184,11 @@ def run():
     model = Team(speaker, listener, decoder)
     model.to(settings.device)
 
-    viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
     train_data = get_feature_data(features_filename, excluded_names=val_classes + test_classes)
     val_data = get_feature_data(features_filename, desired_names=val_classes)
     # test_data = get_feature_data(features_filename, desired_names=test_classes)
-    train(model, train_data['features'], val_data['features'], viz_data['features'])
+    viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
+    train(model, train_data, val_data, viz_data)
 
 
 if __name__ == '__main__':
@@ -175,4 +215,5 @@ if __name__ == '__main__':
                  'chair', 'counter', 'table']
     features_filename = 'data/features.csv' if with_bbox else 'data/features_nobox.csv'
     np.random.seed(0)
+    glove_data = get_glove_vectors()
     run()

@@ -12,6 +12,9 @@ Get the tsv file from the manynames repo (https://raw.githubusercontent.com/amor
 
 The key variable to toggle inside the script is with_bbox, which specifies whether images should be downloaded with or without their bounding boxes.
 
+You also need to download glove embeddings from here: https://www.kaggle.com/danielwillgeorge/glove6b100dtxt
+Just put the file under the ``data`` folder.
+
 ## Training agents
 
 Once the data are downloaded, you can train agents to play a reference game by running ``src/scripts/main.py``

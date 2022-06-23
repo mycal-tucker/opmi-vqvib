@@ -26,3 +26,7 @@ def gen_batch(all_features, batch_size, num_distractors):
     listener_tensor = torch.Tensor(np.vstack(listener_obs)).to(settings.device)
     label_tensor = torch.Tensor(labels).long().to(settings.device)
     return speaker_tensor, listener_tensor, label_tensor
+
+
+def get_glove_embedding(dataset, word):
+    return dataset.loc[word]
