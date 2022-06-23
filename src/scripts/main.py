@@ -11,7 +11,7 @@ import torch.optim as optim
 import numpy as np
 from src.data_utils.helper_fns import gen_batch
 from src.utils.mine import get_info
-from src.utils.plotting import plot_metrics
+from src.utils.plotting import plot_metrics, plot_tsne, plot_mds
 
 
 def evaluate(model, dataset):
@@ -29,6 +29,38 @@ def evaluate(model, dataset):
     acc = num_correct / num_total
     print("Evaluation accuracy", acc)
     return acc
+
+
+def plot_comms(model, dataset):
+    model.eval()
+    num_tests = 100
+    labels = []
+    for f in dataset:
+        speaker_obs = torch.Tensor(np.array(f)).to(settings.device)  # FIXME. tensor?
+        speaker_obs = torch.unsqueeze(speaker_obs, 0)
+        speaker_obs = speaker_obs.repeat(num_tests, 1)
+        likelihoods = model.speaker.get_token_dist(speaker_obs)
+        top_comm_idx = np.argmax(likelihoods)
+        top_likelihood = likelihoods[top_comm_idx]
+        # print("Max likelihood", top_likelihood)
+        label = top_comm_idx if top_likelihood > 0.4 else -1
+        labels.append(label)
+    features = np.vstack(dataset)
+    label_np = np.reshape(np.array(labels), (-1, 1))
+    all_np = np.hstack([label_np, features])
+    # all_np = all_np[all_np[:, 0].argsort()]
+    regrouped_data = []
+    plot_labels = []
+    plot_mean = False
+    for c in np.unique(labels):
+        ix = np.where(all_np[:, 0] == c)
+        matching_features = np.vstack(all_np[ix, 1:])
+        averaged = np.mean(matching_features, axis=0, keepdims=True)
+        plot_features = averaged if plot_mean else matching_features
+        regrouped_data.append(plot_features)
+        plot_labels.append(c)
+    plot_mds(regrouped_data, labels=plot_labels, savepath='training_mds')
+    plot_tsne(regrouped_data, labels=plot_labels, savepath='training_tsne')
 
 
 # Manually calculate the complexity of communication by sampling some inputs and comparing the conditional communication
@@ -56,7 +88,7 @@ def get_probs(speaker, dataset):
     print("Sampled communication complexity", comp)
 
 
-def train(model, train_data, val_data):
+def train(model, train_data, val_data, viz_data):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
     running_acc = 0
@@ -86,9 +118,11 @@ def train(model, train_data, val_data):
         running_acc = running_acc * 0.95 + 0.05 * num_correct / num_total
         print("Running acc", running_acc)
 
-        # Evaluate on the validation set
         if epoch % val_period == val_period - 1:
+            # Evaluate on the validation set
             val_acc = evaluate(model, val_data)
+            # Visualize some of the communication
+            plot_comms(model, viz_data)
             # And calculate efficiency values like complexity and informativeness.
             # Can estimate complexity by sampling inputs and measuring communication probabilities.
             # get_probs(model.speaker, train_data)
@@ -110,10 +144,11 @@ def run():
     model = Team(speaker, listener, decoder)
     model.to(settings.device)
 
+    viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
     train_data = get_feature_data(features_filename, excluded_names=val_classes + test_classes)
     val_data = get_feature_data(features_filename, desired_names=val_classes)
-    test_data = get_feature_data(features_filename, desired_names=test_classes)
-    train(model, train_data['features'], val_data['features'])
+    # test_data = get_feature_data(features_filename, desired_names=test_classes)
+    train(model, train_data['features'], val_data['features'], viz_data['features'])
 
 
 if __name__ == '__main__':
@@ -135,5 +170,9 @@ if __name__ == '__main__':
     with_bbox = False
     val_classes = ['car', 'carpet']
     test_classes = ['couch', 'counter', 'bowl']
+    viz_names = ['airplane', 'plane',
+                 'animal', 'cow', 'dog', 'cat',
+                 'chair', 'counter', 'table']
     features_filename = 'data/features.csv' if with_bbox else 'data/features_nobox.csv'
+    np.random.seed(0)
     run()

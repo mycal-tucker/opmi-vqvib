@@ -13,16 +13,26 @@ def plot_metrics(metrics, labels):
     plt.close()
 
 
-def plot_mds(all_data, labels=None):
-    mds_embedder = MDS(n_components=2)
+def invert_permutation(p):
+    p = np.asanyarray(p)
+    s = np.empty_like(p)
+    s[p] = np.arange(p.size)
+    return s
+
+
+def plot_mds(all_data, labels=None, savepath=None):
+    mds_embedder = MDS(n_components=2, random_state=0)
     catted = np.vstack(all_data)
     if catted.shape[0] > 500:
         print("Warning, data very long. Truncating")
         catted = catted[:500]
-    # Hacky, but to visualize all the points around a cluster, we need to add noise to spread them out a tiny bit.
-    # catted = np.random.normal(catted, 0.1)
+    # Sort the data for reproducibility.
+    sort_permutation = catted[:, 0].argsort()
+    undo_permutation = invert_permutation(sort_permutation)
+    catted = catted[sort_permutation]
     similarities = euclidean_distances(catted.astype(np.float64))
     transformed = mds_embedder.fit_transform(similarities)
+    transformed = transformed[undo_permutation]  # Undo the permutation for plotting, so it lines up with labels.
     x = transformed[:, 0]
     y = transformed[:, 1]
     fig, ax = plt.subplots()
@@ -34,14 +44,23 @@ def plot_mds(all_data, labels=None):
         pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', label=label)
         last_idx += len(data)
     plt.legend()
-    plt.show()
+    if savepath is not None:
+        plt.savefig(savepath)
+    else:
+        plt.show()
+    plt.close()
 
 
-def plot_tsne(all_data, labels=None):
-    tsne = TSNE(n_components=2, learning_rate='auto', init='random')
+def plot_tsne(all_data, labels=None, savepath=None):
+    tsne = TSNE(n_components=2, learning_rate='auto', random_state=0)
     # Concat all data
     catted = np.vstack(all_data)
+    # Sort the data for reproducibility.
+    sort_permutation = catted[:, 0].argsort()
+    undo_permutation = invert_permutation(sort_permutation)
+    catted = catted[sort_permutation]
     transformed = tsne.fit_transform(catted)
+    transformed = transformed[undo_permutation]  # Undo the permutation for plotting, so it lines up with labels.
     x = transformed[:, 0]
     y = transformed[:, 1]
     fig, ax = plt.subplots()
@@ -53,4 +72,8 @@ def plot_tsne(all_data, labels=None):
         pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', label=label)
         last_idx += len(data)
     plt.legend()
-    plt.show()
+    if savepath is not None:
+        plt.savefig(savepath)
+    else:
+        plt.show()
+    plt.close()

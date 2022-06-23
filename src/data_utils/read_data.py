@@ -117,7 +117,7 @@ def img_features(id_to_url):
             f.write('\n')
 
 
-def get_feature_data(filename, desired_names=[], excluded_names=[]):
+def get_feature_data(filename, desired_names=[], excluded_names=[], max_per_class=None):
     # Merge the feature data with the dataset data.
     manynames = load_cleaned_results(filename='data/manynames.tsv')
     data_rows = []
@@ -132,6 +132,14 @@ def get_feature_data(filename, desired_names=[], excluded_names=[]):
     assert len(desired_names) == 0 or len(excluded_names) == 0, "Can't specify both include and exclude"
     if len(desired_names) > 0:
         merged_df = merged_df[merged_df['topname'].isin(desired_names)]
+        if max_per_class is not None:
+            all_idxs = []
+            for g in desired_names:
+                ix = np.where(merged_df['topname'] == g)[0]
+                max_len = min(max_per_class, len(ix))
+                ix = ix[:max_len]
+                all_idxs.extend(ix.tolist())
+            merged_df = merged_df.iloc[all_idxs]
     else:
         merged_df = merged_df[~merged_df['topname'].isin(desired_names)]
     merged_df.reset_index(inplace=True)

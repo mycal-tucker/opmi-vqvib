@@ -5,23 +5,20 @@ import numpy as np
 
 
 def run():
-    data = get_feature_data(features_filename, desired_names=viz_names)
+    data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
     features = data['features']
     names = data['topname']
-    num_per_class = 40
     regrouped_data = []
     labels = []
     for g in np.unique(names):
         ix = np.where(names == g)[0]
-        max_len = min(num_per_class, len(ix))
-        ix = ix[:max_len]
         matching_features = np.vstack(features[ix].values)
         averaged = np.mean(matching_features, axis=0, keepdims=True)
         plot_features = averaged if plot_mean else matching_features
         regrouped_data.append(plot_features)
         labels.append(g)
-    plot_mds(regrouped_data, labels=labels)
-    plot_tsne(regrouped_data, labels=labels)
+    plot_mds(regrouped_data, labels=labels, savepath='english_mds')
+    plot_tsne(regrouped_data, labels=labels, savepath='english_tsne')
 
 
 if __name__ == '__main__':
