@@ -65,7 +65,7 @@ def plot_comms(model, dataset):
 
 
 def get_embedding_alignment(model, dataset):
-    num_tests = 100
+    num_tests = 1
     comms = []
     embeddings = []
     features = []
@@ -83,8 +83,7 @@ def get_embedding_alignment(model, dataset):
     # Now just find a linear mapping from comms to embeddings.
     reg = LinearRegression()
     reg.fit(comms, embeddings)
-    predictions = reg.predict(comms)
-    comm_to_embed_r2 = r2_score(embeddings, predictions)
+    comm_to_embed_r2 = reg.score(comms, embeddings)
     print("Comm to word embedding regression score\t\t", comm_to_embed_r2)
     # And compute regression between pairwise distances in feature space and comm space.
     comm_dists = np.zeros((len(comms), len(comms)))
@@ -94,9 +93,10 @@ def get_embedding_alignment(model, dataset):
             comm_dists[i, j] = np.linalg.norm(c1 - c2)
             feature_dists[i, j] = np.linalg.norm(features[i] - features[j])
     reg = LinearRegression()
+    comm_dists = np.reshape(comm_dists, (-1, 1))
+    feature_dists = np.reshape(feature_dists, (-1, 1))
     reg.fit(comm_dists, feature_dists)
-    predictions = reg.predict(comm_dists)
-    pairwise_r2 = r2_score(feature_dists, predictions)
+    pairwise_r2 = reg.score(comm_dists, feature_dists)
     print("Pairwise dist regression score", pairwise_r2)
     return comm_to_embed_r2, pairwise_r2
 
