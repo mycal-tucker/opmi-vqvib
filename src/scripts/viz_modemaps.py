@@ -7,11 +7,20 @@ import numpy as np
 def run():
     data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
     features = data['features']
-    names = data['topname']
+    topnames = data['topname']
+    responses = data['responses']
+    # Rewrite the topnames entry to be -1 if no single name achieved greater than 40%.
+    cutoff_likelihood = 0.4
+    for i, response in enumerate(responses):
+        total_count = sum(response.values())
+        max_count = max(response.values())
+        if max_count / total_count < cutoff_likelihood:
+            topnames[i] = '-1'
+            print("Unsure for names", response)
     regrouped_data = []
     labels = []
-    for g in np.unique(names):
-        ix = np.where(names == g)[0]
+    for g in np.unique(topnames):
+        ix = np.where(topnames == g)[0]
         matching_features = np.vstack(features[ix].values)
         averaged = np.mean(matching_features, axis=0, keepdims=True)
         plot_features = averaged if plot_mean else matching_features
