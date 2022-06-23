@@ -4,19 +4,16 @@ from src.utils.plotting import plot_mds, plot_tsne
 import numpy as np
 
 
-def run():
-    data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
+def run(data, cutoff):
     features = data['features']
     topnames = data['topname']
     responses = data['responses']
-    # Rewrite the topnames entry to be -1 if no single name achieved greater than 40%.
-    cutoff_likelihood = 0.4
+    # Rewrite the topnames entry to be -1 if no single name achieved greater than some threshold.
     for i, response in enumerate(responses):
         total_count = sum(response.values())
         max_count = max(response.values())
-        if max_count / total_count < cutoff_likelihood:
+        if max_count / total_count < cutoff:
             topnames[i] = '-1'
-            print("Unsure for names", response)
     regrouped_data = []
     labels = []
     for g in np.unique(topnames):
@@ -26,8 +23,8 @@ def run():
         plot_features = averaged if plot_mean else matching_features
         regrouped_data.append(plot_features)
         labels.append(g)
-    plot_mds(regrouped_data, labels=labels, savepath='english_mds')
-    plot_tsne(regrouped_data, labels=labels, savepath='english_tsne')
+    plot_mds(regrouped_data, labels=labels, savepath='english_mds_' + str(cutoff) + '.png')
+    plot_tsne(regrouped_data, labels=labels, savepath='english_tsne_' + str(cutoff) + '.png')
 
 
 if __name__ == '__main__':
@@ -39,4 +36,6 @@ if __name__ == '__main__':
                  'chair', 'counter', 'table']
     features_filename = 'data/features_nobox.csv'
     plot_mean = False  # Do you want to plot all the individual points or the average for each class?
-    run()
+    full_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
+    for cutoff_likelihood in [0.4, 0.5, 0.6, 0.7, 0.8]:
+        run(full_data, cutoff_likelihood)

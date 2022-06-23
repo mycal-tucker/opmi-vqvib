@@ -23,9 +23,10 @@ def invert_permutation(p):
 def plot_mds(all_data, labels=None, savepath=None):
     mds_embedder = MDS(n_components=2, random_state=0)
     catted = np.vstack(all_data)
-    if catted.shape[0] > 500:
+    max_entries = 1000
+    if catted.shape[0] > max_entries:
         print("Warning, data very long. Truncating")
-        catted = catted[:500]
+        catted = catted[:max_entries]
     # Sort the data for reproducibility.
     sort_permutation = catted[:, 0].argsort()
     undo_permutation = invert_permutation(sort_permutation)
