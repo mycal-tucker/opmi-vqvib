@@ -19,8 +19,22 @@ Once the data are downloaded, you can train agents to play a reference game by r
 That script creates some neural agents (speaker, listener, and decoder) and assembles them into a team.
 Agents are trained by sampling random target and distractor images.
 
+## Metrics
+We have several metrics to consider, only some of which are implemented.
+
+1. Complexity/Informativeness are calculated using Mutual Information Neural Estimation (MINE).
+2. In-distribution utility. How often does the listener pick the right image, given the types of inputs it's trained on?
+3. Out-of-distribution utility. If we hold out a specific set of images (say, with the most common label ''car'') from training, how well does the team do on those types of images?
+
+Other metrics that have yet to be implemented are things like gNID, optimality, etc.
+
+## Visualization
+We plot training metrics in an image named ``metrics.png``
+
+We visualize communication naming schemes in figures named ``training_mds.png`` and ``training_tsne.png``.
+These color 2D versions of resnet features of images according to their most commonly associated tokens.
+To compare to English naming, run ``viz_modemaps.py``, which generates similar plots using English naming schemes.
+
 ## Current experiment results
 
-So far, I've gotten the continuous communication working to about 95% accuracy.
-I'm just starting to test VQ-VIB agents but haven't spent any time tweaking hyperparameters or anything, but it's not learning immediately.
-I have ideas for a different way of sampling that seems cleaner and I think will converge faster.
+I can train agents to high task success for continuous, onehot, or VQ-VIB communication.

@@ -164,7 +164,7 @@ if __name__ == '__main__':
     variational = True
     settings.alpha = 1
     settings.sample_first = True
-    settings.kl_weight = 0.00001
+    settings.kl_weight = 0.001
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.learned_marginal = False
     with_bbox = False

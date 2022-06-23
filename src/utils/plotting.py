@@ -41,7 +41,10 @@ def plot_mds(all_data, labels=None, savepath=None):
         label = None if labels is None else labels[data_idx]
         sub_x = x[last_idx: last_idx + len(data)]
         sub_y = y[last_idx: last_idx + len(data)]
-        pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', label=label)
+        if label == -1:
+            pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', facecolors='none', edgecolors='black', label=label)
+        else:
+            pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', label=label)
         last_idx += len(data)
     plt.legend()
     if savepath is not None:
@@ -69,7 +72,10 @@ def plot_tsne(all_data, labels=None, savepath=None):
         label = None if labels is None else labels[data_idx]
         sub_x = x[last_idx: last_idx + len(data)]
         sub_y = y[last_idx: last_idx + len(data)]
-        pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', label=label)
+        if label == -1:
+            pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', facecolors='none', edgecolors='black', label=label)
+        else:
+            pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', label=label)
         last_idx += len(data)
     plt.legend()
     if savepath is not None:
