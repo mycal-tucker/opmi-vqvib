@@ -1,6 +1,6 @@
 
 from src.data_utils.read_data import get_feature_data
-from src.utils.plotting import plot_mds, plot_tsne
+from src.utils.plotting import plot_naming
 import numpy as np
 
 
@@ -23,8 +23,8 @@ def run(data, cutoff):
         plot_features = averaged if plot_mean else matching_features
         regrouped_data.append(plot_features)
         labels.append(g)
-    plot_mds(regrouped_data, labels=labels, savepath='english_mds_' + str(cutoff) + '.png')
-    plot_tsne(regrouped_data, labels=labels, savepath='english_tsne_' + str(cutoff) + '.png')
+    plot_naming(regrouped_data, viz_method='mds', labels=labels, savepath='english_mds_' + str(cutoff) + '.png', plot_all_colors=True)
+    plot_naming(regrouped_data, viz_method='tsne', labels=labels, savepath='english_tsne_' + str(cutoff) + '.png', plot_all_colors=True)
 
 
 if __name__ == '__main__':
@@ -32,8 +32,7 @@ if __name__ == '__main__':
     # If you don't want to specify, you'll end up with tons of classes.
     # But you can do so by removing the 'desired_names' field in the call to get_feature_data()
     viz_names = ['airplane', 'plane',
-                 'animal', 'cow', 'dog', 'cat',
-                 'chair', 'counter', 'table']
+                 'animal', 'cow', 'dog', 'cat']
     features_filename = 'data/features_nobox.csv'
     plot_mean = False  # Do you want to plot all the individual points or the average for each class?
     full_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)

@@ -12,7 +12,7 @@ import torch.optim as optim
 import numpy as np
 from src.data_utils.helper_fns import gen_batch, get_glove_embedding
 from src.utils.mine import get_info
-from src.utils.plotting import plot_metrics, plot_tsne, plot_mds
+from src.utils.plotting import plot_metrics, plot_naming
 from sklearn.metrics import r2_score
 from sklearn.linear_model import LinearRegression
 
@@ -61,8 +61,8 @@ def plot_comms(model, dataset):
         plot_features = averaged if plot_mean else matching_features
         regrouped_data.append(plot_features)
         plot_labels.append(c)
-    plot_mds(regrouped_data, labels=plot_labels, savepath='training_mds')
-    plot_tsne(regrouped_data, labels=plot_labels, savepath='training_tsne')
+    plot_naming(regrouped_data, viz_method='mds', labels=plot_labels, savepath='training_mds')
+    plot_naming(regrouped_data, viz_method='tsne', labels=plot_labels, savepath='training_tsne')
 
 
 def get_embedding_alignment(model, dataset):
@@ -198,7 +198,7 @@ if __name__ == '__main__':
     see_distractor = False
     num_distractors = 1
     num_epochs = 5000
-    val_period = 10000  # How often to test on the validation set and calculate various info metrics.
+    val_period = 100  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 32
     # kl_incr = 0.00001
@@ -213,8 +213,7 @@ if __name__ == '__main__':
     val_classes = ['car', 'carpet']
     test_classes = ['couch', 'counter', 'bowl']
     viz_names = ['airplane', 'plane',
-                 'animal', 'cow', 'dog', 'cat',
-                 'chair', 'counter', 'table']
+                 'animal', 'cow', 'dog', 'cat']
     features_filename = 'data/features.csv' if with_bbox else 'data/features_nobox.csv'
     np.random.seed(0)
     glove_data = get_glove_vectors()
