@@ -23,10 +23,11 @@ def gen_batch(all_features, batch_size, num_distractors, vae=None):
         listener_obs.append(l_obs)
         labels.append(obs_targ_idx)
     speaker_tensor = torch.Tensor(np.vstack(speaker_obs)).to(settings.device)
+    listener_tensor = torch.Tensor(np.vstack(listener_obs)).to(settings.device)
     if vae is not None:
         with torch.no_grad():
             speaker_tensor, _ = vae(speaker_tensor)
-    listener_tensor = torch.Tensor(np.vstack(listener_obs)).to(settings.device)
+            listener_tensor, _ = vae(listener_tensor)
     label_tensor = torch.Tensor(labels).long().to(settings.device)
     return speaker_tensor, listener_tensor, label_tensor
 

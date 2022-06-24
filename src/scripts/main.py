@@ -12,7 +12,7 @@ import torch.optim as optim
 import numpy as np
 from src.data_utils.helper_fns import gen_batch, get_glove_embedding
 from src.utils.mine import get_info
-from src.utils.plotting import plot_metrics, plot_naming
+from src.utils.plotting import plot_metrics, plot_naming, plot_scatter
 from sklearn.metrics import r2_score
 from sklearn.linear_model import LinearRegression
 
@@ -21,17 +21,21 @@ def evaluate(model, dataset):
     model.eval()
     num_test_batches = 20
     num_correct = 0
+    total_recons_loss = 0
     num_total = 0
     for _ in range(num_test_batches):
         speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, num_distractors, vae=vae)
         with torch.no_grad():
-            outputs, _, _, _ = model(speaker_obs, listener_obs)
+            outputs, _, _, recons = model(speaker_obs, listener_obs)
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
         num_correct += np.sum(pred_labels == labels.cpu().numpy())
         num_total += pred_labels.size
+        total_recons_loss += torch.mean(((speaker_obs - recons) ** 2)).item()
     acc = num_correct / num_total
+    total_recons_loss = total_recons_loss / num_total
     print("Evaluation accuracy", acc)
-    return acc
+    print("Evaluation recons loss", total_recons_loss)
+    return acc, total_recons_loss
 
 
 def plot_comms(model, dataset):
@@ -132,24 +136,22 @@ def train(model, train_data, val_data, viz_data):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
     running_acc = 0
-    metric_labels = ['train_acc', 'val_acc', 'complexity (nats)', 'informativeness (nats)']
+    metric_labels = ['train_acc', 'val_acc', 'complexity (nats)', 'informativeness (Recons loss)']
     metrics = []
     for epoch in range(num_epochs):
-        settings.kl_weight += kl_incr
+        if epoch > burnin_epochs:
+            settings.kl_weight += kl_incr
         print('epoch', epoch, 'of', num_epochs)
         print("Kl weight", settings.kl_weight)
         speaker_obs, listener_obs, labels = gen_batch(train_features, batch_size, num_distractors, vae=vae)
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
         loss = criterion(outputs, labels)
-        # print("Classification loss", loss)
         recons_loss = torch.mean(((speaker_obs - recons) ** 2))
-        # print("Recons loss", recons_loss)
         loss += settings.alpha * recons_loss
         loss += speaker_loss
         loss.backward()
         optimizer.step()
-        # print("Loss", loss)
 
         # Metrics
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
@@ -160,9 +162,12 @@ def train(model, train_data, val_data, viz_data):
 
         if epoch % val_period == val_period - 1:
             # Evaluate on the validation set
-            val_acc = evaluate(model, val_data['features'])
+            val_acc, val_recons = evaluate(model, val_data['features'])
             # Visualize some of the communication
-            plot_comms(model, viz_data['features'])
+            try:
+                plot_comms(model, viz_data['features'])
+            except AssertionError:
+                print("Can't plot comms for whatever reason (e.g., continuous communication makes categorizing hard)")
             # And compare to english word embeddings
             word_embed_r2, pairwise_r2 = get_embedding_alignment(model, viz_data)
             # And calculate efficiency values like complexity and informativeness.
@@ -170,18 +175,21 @@ def train(model, train_data, val_data, viz_data):
             # get_probs(model.speaker, train_data)
             # Or we can use MINE to estimate complexity and informativeness.
             complexity = get_info(model, train_features, num_distractors, targ_dim=comm_dim, comm_targ=True)
-            informativeness = get_info(model, train_features, num_distractors, targ_dim=feature_len, comm_targ=False)
+            # informativeness = get_info(model, train_features, num_distractors, targ_dim=feature_len, comm_targ=False)
+            informativeness = -1 * val_recons
             print("Complexity", complexity)
             print("Informativeness", informativeness)
             metrics.append([running_acc, val_acc, complexity, informativeness])
             plot_metrics(metrics, metric_labels)
+            plot_scatter([[metric[2] for metric in metrics], [metric[3] for metric in metrics]],
+                         [metric_labels[2], metric_labels[3]], savepath='info_plane.png')
 
 
 def run():
     speaker_inp_dim = feature_len if not see_distractor else (num_distractors + 1) * feature_len
-    # speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=True, variational=variational)
+    # speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=False, variational=variational)
     speaker = VQ(speaker_inp_dim, comm_dim, num_layers=3, num_protos=330, variational=variational)
-    listener = Listener(comm_dim, feature_len, num_distractors + 1, num_layers=2)
+    listener = Listener(feature_len, num_distractors + 1, num_layers=2)
     decoder = Decoder(comm_dim, speaker_inp_dim, num_layers=3)
     model = Team(speaker, listener, decoder)
     model.to(settings.device)
@@ -201,8 +209,10 @@ if __name__ == '__main__':
     val_period = 100  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 32
-    # kl_incr = 0.00001
-    kl_incr = 0.0
+    # kl_incr = 0.0001  # For continuous communication
+    kl_incr = 0.0000001  # For VQ-VIB
+    # kl_incr = 0.0
+    burnin_epochs = 500
     variational = True
     settings.alpha = 1
     settings.sample_first = True

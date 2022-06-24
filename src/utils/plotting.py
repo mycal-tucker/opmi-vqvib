@@ -13,6 +13,17 @@ def plot_metrics(metrics, labels):
     plt.close()
 
 
+def plot_scatter(metrics, labels, savepath):
+    assert len(metrics) == 2
+    fig, ax = plt.subplots()
+    c = [i for i in range(len(metrics[0]))]
+    pcm = ax.scatter(metrics[0], metrics[1], c=c, s=20, cmap='viridis')
+    plt.xlabel(labels[0])
+    plt.ylabel(labels[1])
+    plt.savefig(savepath)
+    plt.close()
+
+
 def invert_permutation(p):
     p = np.asanyarray(p)
     s = np.empty_like(p)

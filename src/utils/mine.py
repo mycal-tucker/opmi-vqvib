@@ -13,22 +13,24 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.fc_1 = nn.Linear(input1_size + input2_size, 128)
         self.fc_2 = nn.Linear(128, 128)
-        self.fc_3 = nn.Linear(128, 1)
+        self.fc_3 = nn.Linear(128, 128)
+        self.fc_4 = nn.Linear(128, 1)
 
     def forward(self, x, y):
         catted = torch.hstack((x, y))
         h1 = F.relu(self.fc_1(catted))
         h2 = F.relu(self.fc_2(h1))
-        output = self.fc_3(h2)
+        h3 = F.relu(self.fc_3(h2))
+        output = self.fc_4(h3)
         return output
 
 
-def get_info(model, dataset, num_distractors, targ_dim, comm_targ=False, batch_size=32):
+def get_info(model, dataset, num_distractors, targ_dim, comm_targ=False, batch_size=1024):
     # Define a network that takes in the two variables to calculate the MI of.
     mine_net = Net(512, targ_dim)
     mine_net.to(settings.device)
     optimizer = optim.Adam(mine_net.parameters())
-    num_epochs = 1000
+    num_epochs = 200
     for epoch in range(num_epochs):
         speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, num_distractors)
         with torch.no_grad():
