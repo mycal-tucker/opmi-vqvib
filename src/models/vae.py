@@ -29,7 +29,7 @@ class VAE(nn.Module):
         z = reparameterize(mu, log_var)
         dec = self.dec(z)
         kl_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)
-        recons_loss = torch.mean((dec - x)) ** 2
-        total_loss = recons_loss + kl_loss
+        recons_loss = torch.mean((dec - x) ** 2)
+        total_loss = recons_loss + 0.01 * kl_loss
         return dec, total_loss
 

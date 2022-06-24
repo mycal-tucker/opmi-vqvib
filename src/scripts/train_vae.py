@@ -25,7 +25,7 @@ def run():
 if __name__ == '__main__':
     features_filename = 'data/features_nobox.csv'
     savepath = 'saved_models/vae.pt'
-    num_epochs = 100
+    num_epochs = 10000
     batch_size = 128
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     run()

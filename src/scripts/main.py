@@ -198,7 +198,7 @@ if __name__ == '__main__':
     see_distractor = False
     num_distractors = 1
     num_epochs = 5000
-    val_period = 100  # How often to test on the validation set and calculate various info metrics.
+    val_period = 10000  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 32
     # kl_incr = 0.00001
@@ -206,7 +206,7 @@ if __name__ == '__main__':
     variational = True
     settings.alpha = 1
     settings.sample_first = True
-    settings.kl_weight = 0.001
+    settings.kl_weight = 0.00001
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.learned_marginal = False
     with_bbox = False
