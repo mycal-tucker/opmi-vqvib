@@ -3,6 +3,7 @@ from src.models.team import Team
 from src.models.mlp import MLP
 from src.models.listener import Listener
 from src.models.decoder import Decoder
+from src.models.vae import VAE
 import src.settings as settings
 from src.data_utils.read_data import get_feature_data, get_glove_vectors
 import torch
@@ -22,7 +23,7 @@ def evaluate(model, dataset):
     num_correct = 0
     num_total = 0
     for _ in range(num_test_batches):
-        speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, num_distractors)
+        speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, num_distractors, vae=vae)
         with torch.no_grad():
             outputs, _, _, _ = model(speaker_obs, listener_obs)
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
@@ -100,6 +101,7 @@ def get_embedding_alignment(model, dataset):
     print("Pairwise dist regression score", pairwise_r2)
     return comm_to_embed_r2, pairwise_r2
 
+
 # Manually calculate the complexity of communication by sampling some inputs and comparing the conditional communication
 # to the marginal communication.
 def get_probs(speaker, dataset):
@@ -136,7 +138,7 @@ def train(model, train_data, val_data, viz_data):
         settings.kl_weight += kl_incr
         print('epoch', epoch, 'of', num_epochs)
         print("Kl weight", settings.kl_weight)
-        speaker_obs, listener_obs, labels = gen_batch(train_features, batch_size, num_distractors)
+        speaker_obs, listener_obs, labels = gen_batch(train_features, batch_size, num_distractors, vae=vae)
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
         loss = criterion(outputs, labels)
@@ -216,4 +218,7 @@ if __name__ == '__main__':
     features_filename = 'data/features.csv' if with_bbox else 'data/features_nobox.csv'
     np.random.seed(0)
     glove_data = get_glove_vectors()
+    vae = VAE(512, 32)
+    vae.load_state_dict(torch.load('saved_models/vae.pt'))
+    vae.to(settings.device)
     run()

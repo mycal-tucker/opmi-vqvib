@@ -3,7 +3,7 @@ import src.settings as settings
 import torch
 
 
-def gen_batch(all_features, batch_size, num_distractors):
+def gen_batch(all_features, batch_size, num_distractors, vae=None):
     # Given the dataset of all features, creates a batch of inputs.
     # That's:
     # 1) The speaker's observation
@@ -23,6 +23,9 @@ def gen_batch(all_features, batch_size, num_distractors):
         listener_obs.append(l_obs)
         labels.append(obs_targ_idx)
     speaker_tensor = torch.Tensor(np.vstack(speaker_obs)).to(settings.device)
+    if vae is not None:
+        with torch.no_grad():
+            speaker_tensor, _ = vae(speaker_tensor)
     listener_tensor = torch.Tensor(np.vstack(listener_obs)).to(settings.device)
     label_tensor = torch.Tensor(labels).long().to(settings.device)
     return speaker_tensor, listener_tensor, label_tensor
