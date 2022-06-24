@@ -17,8 +17,15 @@ Just put the file under the ``data`` folder.
 
 ## Training agents
 
-Once the data are downloaded, you can train agents to play a reference game by running ``src/scripts/main.py``
+Once the data are downloaded, almost trian agents.
 
+First, you need to train a VAE to autoencode features, so that we can regenerate features to be fed to the speaker.
+Train the VAE using the src/scripts/train_vae.py script.
+Note that within the VAE class we take a linear combination of reconstruction and KL loss, as in a 
+beta VAE framework.
+The script ends by saving the trained model.
+
+Now we can train agents to play a reference game via the src/scripts/main.py script.
 That script creates some neural agents (speaker, listener, and decoder) and assembles them into a team.
 Agents are trained by sampling random target and distractor images.
 
