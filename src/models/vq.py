@@ -17,34 +17,31 @@ class VQLayer(nn.Module):
         self.prototypes = nn.Parameter(data=torch.Tensor(num_protos, latent_dim))
         self.prototypes.data.uniform_(-1 / self.num_protos, 1 / self.num_protos)
 
-    def forward(self, latents):
+    def forward(self, latents, sample=False):
         dists_to_protos = torch.sum(latents ** 2, dim=1, keepdim=True) + \
                           torch.sum(self.prototypes ** 2, dim=1) - 2 * \
                           torch.matmul(latents, self.prototypes.t())
-
-        closest_protos = torch.argmin(dists_to_protos, dim=1).unsqueeze(1)
-        encoding_one_hot = torch.zeros(closest_protos.size(0), self.num_protos).to(settings.device)
-        encoding_one_hot.scatter_(1, closest_protos, 1)
-
-        quantized_latents = torch.matmul(encoding_one_hot, self.prototypes)
+        if sample:
+            closest_encodings = gumbel_softmax(-dists_to_protos, hard=True)
+            # get quantized latent vectors
+            quantized_latents = torch.matmul(closest_encodings, self.prototypes).view(latents.shape)
+        else:
+            closest_protos = torch.argmin(dists_to_protos, dim=1).unsqueeze(1)
+            encoding_one_hot = torch.zeros(closest_protos.size(0), self.num_protos).to(settings.device)
+            encoding_one_hot.scatter_(1, closest_protos, 1)
+            quantized_latents = torch.matmul(encoding_one_hot, self.prototypes)
 
         # Compute the VQ Losses
         commitment_loss = F.mse_loss(quantized_latents.detach(), latents)
         embedding_loss = F.mse_loss(quantized_latents, latents.detach())
-
         vq_loss = commitment_loss * self.beta + embedding_loss
 
-        # Compute the entropy of the distribution for which prototypes are used. Uses a differentiable approximation
-        # for the distributions.
-        # TODO: I had implemented this earlier, and it's hacky but sort of works, but I think I can use
-        # ideas from get_token_dist() at the bottom of this file to get the actual distribution and entropy.
-        # Yeah, truly, this should be a quick change
+        # Compute the entropy of the distribution for which prototypes are used.
         ent = self.get_categorical_ent(dists_to_protos)
-        vq_loss += 0.01 * ent  # Default weight is 0.05
 
         # Add the residue back to the latents
         quantized_latents = latents + (quantized_latents - latents).detach()
-        return quantized_latents, vq_loss
+        return quantized_latents, vq_loss, ent
 
     def get_categorical_ent(self, distances):
         # Approximate the onehot of which prototype via a softmax of the negative distances
@@ -76,7 +73,6 @@ class VQ(nn.Module):
         self.vq_layer = VQLayer(num_protos, output_dim)
         self.fc_mu = nn.Linear(output_dim, output_dim)
         if variational:
-            self.fc_var = nn.Linear(output_dim, output_dim)
             # Learnable prior is initialized to match a unit Gaussian.
             if settings.learned_marginal:
                 self.prior_mu = nn.Parameter(data=torch.Tensor(out_dim))
@@ -90,54 +86,28 @@ class VQ(nn.Module):
             x = layer(x)
             x = F.relu(x)
         if self.variational:
-            logvar = self.fc_var(x)
-            if not settings.sample_first:  # Choose a prototype and then sample around it
-                # Quantize the vectors
-                quantized, proto_loss = self.vq_layer(x)
-                output = reparameterize(quantized, logvar) if not self.eval_mode else quantized
-                relevant_mu = quantized
-            else:  # Sample in the space and then choose the closest prototype
-                mu = self.fc_mu(x)
-                sample = reparameterize(mu, logvar) if not self.eval_mode else mu
-                # Quantize the vectors
-                output, proto_loss = self.vq_layer(sample)
-                relevant_mu = mu
-            # Compute the KL divergence
-            if not settings.learned_marginal:
-                kld_loss = torch.mean(-0.5 * torch.sum(1 + logvar - relevant_mu ** 2 - logvar.exp(), dim=1), dim=0)
-                regularization_loss = 0
-            else:
-                kld_loss = torch.mean(0.5 * torch.sum(
-                    self.prior_logvar - logvar - 1 + logvar.exp() / self.prior_logvar.exp() + (
-                                (self.prior_mu - relevant_mu) ** 2) / self.prior_logvar.exp(), dim=1), dim=0)
-                regularization_loss = torch.mean(self.prior_logvar ** 2) + torch.mean(self.prior_mu ** 2)
-            total_loss = settings.kl_weight * kld_loss + proto_loss + 0.01 * regularization_loss
+            mu = self.fc_mu(x)
+            # Quantize the vectors
+            output, proto_loss, kld_loss = self.vq_layer(mu, True)
+            total_loss = settings.kl_weight * kld_loss + proto_loss
             capacity = kld_loss
         else:
             x = self.fc_mu(x)
-            output, total_loss = self.vq_layer(x)
+            output, total_loss, _ = self.vq_layer(x)
             capacity = torch.tensor(0)
-        return output, 10 * total_loss, capacity
+        return output, total_loss, capacity
 
     # Helper method calculates the distribution over prototypes given an input
     def get_token_dist(self, x):
-        assert settings.sample_first, "There's no distribution over protos if you don't sample first."
         with torch.no_grad():
             for i, layer in enumerate(self.layers):
                 x = layer(x)
                 x = F.relu(x)
-            if self.variational:
-                logvar = self.fc_var(x)
-                mu = self.fc_mu(x)
-                samples = reparameterize(mu, logvar)
-            else:
-                samples = self.fc_mu(x)
+            samples = self.fc_mu(x)
             # Now discretize
             dists_to_protos = torch.sum(samples ** 2, dim=1, keepdim=True) + \
                               torch.sum(self.vq_layer.prototypes ** 2, dim=1) - 2 * \
                               torch.matmul(samples, self.vq_layer.prototypes.t())
-            closest_protos = torch.argmin(dists_to_protos, dim=1).unsqueeze(1)
-            encoding_one_hot = torch.zeros(closest_protos.size(0), self.vq_layer.num_protos).to(settings.device)
-            encoding_one_hot.scatter_(1, closest_protos, 1)
-            likelihoods = np.mean(encoding_one_hot.detach().cpu().numpy(), axis=0)
+            _, distribution = gumbel_softmax(-dists_to_protos, return_dist=True)
+            likelihoods = np.mean(distribution.detach().cpu().numpy(), axis=0)
         return likelihoods

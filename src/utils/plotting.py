@@ -24,6 +24,7 @@ def plot_scatter(metrics, labels, savepath=None):
     plt.ylabel(labels[1])
     if savepath is not None:
         plt.savefig(savepath)
+        plt.savefig('info_plane.png')
     else:
         plt.show()
     plt.close()

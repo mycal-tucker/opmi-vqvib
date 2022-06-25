@@ -42,7 +42,7 @@ def evaluate(model, dataset):
 
 
 def plot_comms(model, dataset, basepath):
-    num_tests = 100
+    num_tests = 1  # Don't need to repeat many trials because the probability distribution is generated deterministically.
     labels = []
     for f in dataset:
         speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
@@ -165,7 +165,7 @@ def train(model, train_data, val_data, viz_data):
         running_acc = running_acc * 0.95 + 0.05 * num_correct / num_total
         print("Running acc", running_acc)
 
-        if epoch % val_period == val_period - 1:
+        if epoch % val_period == val_period - 1 and epoch > 1400:
             # Create a directory to save information, models, etc.
             basepath = savepath + str(epoch) + '/'
             if not os.path.exists(basepath):
@@ -230,18 +230,17 @@ if __name__ == '__main__':
     see_distractor = False
     num_distractors = 1
     num_epochs = 5000
-    val_period = 100  # How often to test on the validation set and calculate various info metrics.
+    val_period = 50  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 32
-    kl_incr = 0.0001  # For continuous communication
-    # kl_incr = 0.0000001  # For VQ-VIB
+    # kl_incr = 0.0001  # For continuous communication
+    kl_incr = 0.0001  # For VQ-VIB
     # kl_incr = 0.0
     burnin_epochs = 500
     variational = True
     # Measuring complexity takes a lot of time. For debugging other features, set to false.
     calculate_complexity = True
     settings.alpha = 1
-    settings.sample_first = True
     settings.kl_weight = 0.00001
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.learned_marginal = False
@@ -257,7 +256,7 @@ if __name__ == '__main__':
     vae.load_state_dict(torch.load('saved_models/vae.pt'))
     vae.to(settings.device)
 
-    speaker_type = 'cont'
+    speaker_type = 'vq'
     seed = 1
     np.random.seed(seed)
     torch.manual_seed(seed)
