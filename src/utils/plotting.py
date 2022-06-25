@@ -4,24 +4,40 @@ from sklearn.metrics import euclidean_distances
 from sklearn.manifold import MDS, TSNE
 
 
-def plot_metrics(metrics, labels):
-    for i, label in enumerate(labels):
-        metric_data = [metric[i] for metric in metrics]
-        plt.plot(metric_data, label=label)
+def plot_metrics(metrics, labels, basepath=None):
+    for metric, label in zip(metrics, labels):
+        plt.plot(metric, label=label)
     plt.legend()
-    plt.savefig('metrics.png')
+    savepath = 'metrics.png'
+    if basepath is not None:
+        savepath = basepath + savepath
+    plt.savefig(savepath)
     plt.close()
 
 
-def plot_scatter(metrics, labels, savepath):
+def plot_scatter(metrics, labels, savepath=None):
     assert len(metrics) == 2
     fig, ax = plt.subplots()
     c = [i for i in range(len(metrics[0]))]
     pcm = ax.scatter(metrics[0], metrics[1], c=c, s=20, cmap='viridis')
     plt.xlabel(labels[0])
     plt.ylabel(labels[1])
-    plt.savefig(savepath)
+    if savepath is not None:
+        plt.savefig(savepath)
+    else:
+        plt.show()
     plt.close()
+
+
+def plot_multi_trials(multi_metrics, series_labels, savepath=None):
+    fig, ax = plt.subplots()
+    for metric_x, metric_y, label in zip(multi_metrics[0], multi_metrics[1], series_labels):
+        pcm = ax.scatter(metric_x, metric_y, s=20, label=label)
+    plt.xlabel('Complexity (nats)')
+    plt.ylabel('Negative MSE')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 
 def invert_permutation(p):

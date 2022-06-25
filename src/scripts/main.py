@@ -1,20 +1,23 @@
-from src.models.vq import VQ
-from src.models.team import Team
-from src.models.mlp import MLP
-from src.models.listener import Listener
-from src.models.decoder import Decoder
-from src.models.vae import VAE
-import src.settings as settings
-from src.data_utils.read_data import get_feature_data, get_glove_vectors
+import os
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
+from sklearn.linear_model import LinearRegression
+
+import src.settings as settings
 from src.data_utils.helper_fns import gen_batch, get_glove_embedding
+from src.data_utils.read_data import get_feature_data, get_glove_vectors
+from src.models.decoder import Decoder
+from src.models.listener import Listener
+from src.models.team import Team
+from src.models.vae import VAE
+from src.models.vq import VQ
+from src.models.mlp import MLP
 from src.utils.mine import get_info
 from src.utils.plotting import plot_metrics, plot_naming, plot_scatter
-from sklearn.metrics import r2_score
-from sklearn.linear_model import LinearRegression
+from src.utils.performance_metrics import PerformanceMetrics
 
 
 def evaluate(model, dataset):
@@ -38,7 +41,7 @@ def evaluate(model, dataset):
     return acc, total_recons_loss
 
 
-def plot_comms(model, dataset):
+def plot_comms(model, dataset, basepath):
     num_tests = 100
     labels = []
     for f in dataset:
@@ -65,8 +68,8 @@ def plot_comms(model, dataset):
         plot_features = averaged if plot_mean else matching_features
         regrouped_data.append(plot_features)
         plot_labels.append(c)
-    plot_naming(regrouped_data, viz_method='mds', labels=plot_labels, savepath='training_mds')
-    plot_naming(regrouped_data, viz_method='tsne', labels=plot_labels, savepath='training_tsne')
+    plot_naming(regrouped_data, viz_method='mds', labels=plot_labels, savepath=basepath + 'training_mds')
+    plot_naming(regrouped_data, viz_method='tsne', labels=plot_labels, savepath=basepath + 'training_tsne')
 
 
 def get_embedding_alignment(model, dataset):
@@ -133,11 +136,13 @@ def get_probs(speaker, dataset):
 
 def train(model, train_data, val_data, viz_data):
     train_features = train_data['features']
+    val_features = val_data['features']
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
     running_acc = 0
     metric_labels = ['train_acc', 'val_acc', 'complexity (nats)', 'informativeness (Recons loss)']
-    metrics = []
+    train_metrics = PerformanceMetrics()
+    val_metrics = PerformanceMetrics()
     for epoch in range(num_epochs):
         if epoch > burnin_epochs:
             settings.kl_weight += kl_incr
@@ -161,11 +166,15 @@ def train(model, train_data, val_data, viz_data):
         print("Running acc", running_acc)
 
         if epoch % val_period == val_period - 1:
-            # Evaluate on the validation set
-            val_acc, val_recons = evaluate(model, val_data['features'])
+            # Create a directory to save information, models, etc.
+            basepath = savepath + str(epoch) + '/'
+            if not os.path.exists(basepath):
+                os.makedirs(basepath)
+            train_acc, train_recons = evaluate(model, train_features)
+            val_acc, val_recons = evaluate(model, val_features)
             # Visualize some of the communication
             try:
-                plot_comms(model, viz_data['features'])
+                plot_comms(model, viz_data['features'], basepath)
             except AssertionError:
                 print("Can't plot comms for whatever reason (e.g., continuous communication makes categorizing hard)")
             # And compare to english word embeddings
@@ -174,21 +183,36 @@ def train(model, train_data, val_data, viz_data):
             # Can estimate complexity by sampling inputs and measuring communication probabilities.
             # get_probs(model.speaker, train_data)
             # Or we can use MINE to estimate complexity and informativeness.
-            complexity = get_info(model, train_features, num_distractors, targ_dim=comm_dim, comm_targ=True)
+            if calculate_complexity:
+                train_complexity = get_info(model, train_features, num_distractors, targ_dim=comm_dim, comm_targ=True)
+                # val_complexity = get_info(model, val_features, num_distractors, targ_dim=comm_dim, comm_targ=True)
+                val_complexity = None
+                print("Train complexity", train_complexity)
+                print("Val complexity", val_complexity)
+            else:
+                train_complexity = None
+                val_complexity = None
             # informativeness = get_info(model, train_features, num_distractors, targ_dim=feature_len, comm_targ=False)
             informativeness = -1 * val_recons
-            print("Complexity", complexity)
-            print("Informativeness", informativeness)
-            metrics.append([running_acc, val_acc, complexity, informativeness])
-            plot_metrics(metrics, metric_labels)
-            plot_scatter([[metric[2] for metric in metrics], [metric[3] for metric in metrics]],
-                         [metric_labels[2], metric_labels[3]], savepath='info_plane.png')
+            train_metrics.add_data(train_complexity, -1 * train_recons, train_acc, settings.kl_weight)
+            val_metrics.add_data(val_complexity, -1 * val_recons, val_acc, settings.kl_weight)
+            plot_scatter([train_metrics.complexities, train_metrics.recons],
+                         ['Complexity', 'Informativeness'], savepath=basepath + 'info_plane.png')
+            plot_metrics([train_metrics.comm_accs, val_metrics.comm_accs], ['train utility', 'val utility'], basepath=basepath)
+            # Save the model itself.
+            torch.save(model.state_dict(), basepath + 'model.pt')
+            train_metrics.to_file(basepath + 'train_metrics')
+            val_metrics.to_file(basepath + 'val_metrics')
 
 
 def run():
     speaker_inp_dim = feature_len if not see_distractor else (num_distractors + 1) * feature_len
-    # speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=False, variational=variational)
-    speaker = VQ(speaker_inp_dim, comm_dim, num_layers=3, num_protos=330, variational=variational)
+    if speaker_type == 'cont':
+        speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=False, variational=variational)
+    elif speaker_type == 'onehot':
+        speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=False, variational=variational)
+    elif speaker_type == 'vq':
+        speaker = VQ(speaker_inp_dim, comm_dim, num_layers=3, num_protos=330, variational=variational)
     listener = Listener(feature_len, num_distractors + 1, num_layers=2)
     decoder = Decoder(comm_dim, speaker_inp_dim, num_layers=3)
     model = Team(speaker, listener, decoder)
@@ -209,11 +233,13 @@ if __name__ == '__main__':
     val_period = 100  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 32
-    # kl_incr = 0.0001  # For continuous communication
-    kl_incr = 0.0000001  # For VQ-VIB
+    kl_incr = 0.0001  # For continuous communication
+    # kl_incr = 0.0000001  # For VQ-VIB
     # kl_incr = 0.0
     burnin_epochs = 500
     variational = True
+    # Measuring complexity takes a lot of time. For debugging other features, set to false.
+    calculate_complexity = True
     settings.alpha = 1
     settings.sample_first = True
     settings.kl_weight = 0.00001
@@ -230,4 +256,10 @@ if __name__ == '__main__':
     vae = VAE(512, 32)
     vae.load_state_dict(torch.load('saved_models/vae.pt'))
     vae.to(settings.device)
+
+    speaker_type = 'cont'
+    seed = 1
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    savepath = 'saved_models/' + speaker_type + '/seed' + str(seed) + '/'
     run()
