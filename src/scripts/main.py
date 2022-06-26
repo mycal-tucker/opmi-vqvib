@@ -257,7 +257,7 @@ if __name__ == '__main__':
     vae.to(settings.device)
 
     speaker_type = 'vq'
-    seed = 1
+    seed = 0
     np.random.seed(seed)
     torch.manual_seed(seed)
     savepath = 'saved_models/' + speaker_type + '/seed' + str(seed) + '/'

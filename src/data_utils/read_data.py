@@ -13,6 +13,7 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 from PIL import Image
+from sklearn.decomposition import PCA
 
 
 # %% ---- FUNCTION TO LOAD MANYNAMES.TSV
@@ -146,8 +147,13 @@ def get_feature_data(filename, desired_names=[], excluded_names=[], max_per_clas
     return merged_df
 
 
-def get_glove_vectors():
-    return pd.read_table('data/glove.6B.100d.txt', sep=" ", index_col=0, header=None, quoting=csv.QUOTE_NONE)
+def get_glove_vectors(comm_dim):
+    raw_data = pd.read_table('data/glove.6B.100d.txt', sep=" ", index_col=0, header=None, quoting=csv.QUOTE_NONE)
+    np_data = np.array(raw_data)
+    pca = PCA(n_components=comm_dim)
+    new_data = pca.fit_transform(np_data)
+    new_pd = pd.DataFrame(data=new_data, index=raw_data.index)
+    return new_pd
 
 
 # %% ---- DIRECTLY RUN
