@@ -30,10 +30,10 @@ def plot_scatter(metrics, labels, savepath=None):
     plt.close()
 
 
-def plot_multi_trials(multi_metrics, series_labels, savepath=None):
+def plot_multi_trials(multi_metrics, series_labels, sizes, savepath=None):
     fig, ax = plt.subplots()
-    for metric_x, metric_y, label in zip(multi_metrics[0], multi_metrics[1], series_labels):
-        pcm = ax.scatter(metric_x, metric_y, s=20, label=label)
+    for metric_x, metric_y, label, s in zip(multi_metrics[0], multi_metrics[1], series_labels, sizes):
+        pcm = ax.scatter(metric_x, metric_y, s=s, label=label)
     plt.xlabel('Complexity (nats)')
     plt.ylabel('Negative MSE')
     plt.legend()

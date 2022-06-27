@@ -45,6 +45,12 @@ We visualize communication naming schemes in figures named ``training_mds.png`` 
 These color 2D versions of resnet features of images according to their most commonly associated tokens.
 To compare to English naming, run ``viz_modemaps.py``, which generates similar plots using English naming schemes.
 
+## English Analysis
+
+To measure the computational efficiency of English in the manynames dataset, run ``src/scripts/english_analysis.py``
+It uses glove embeddings of the English words associated with each image and trains agents to decode the features from those embeddings.
+We can then estimate complexity using MINE (as for emergent communication) between features and embeddings, and informativeness as the MSE of the reconstructions and the original features.
+
 ## Current experiment results
 
 I can train agents to high task success for continuous, onehot, or VQ-VIB communication.

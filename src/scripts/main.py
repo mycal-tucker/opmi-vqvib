@@ -22,7 +22,7 @@ from src.utils.performance_metrics import PerformanceMetrics
 
 def evaluate(model, dataset):
     model.eval()
-    num_test_batches = 20
+    num_test_batches = 50
     num_correct = 0
     total_recons_loss = 0
     num_total = 0
@@ -140,6 +140,7 @@ def train(model, train_data, val_data, viz_data):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
     running_acc = 0
+    running_mse = 0
     metric_labels = ['train_acc', 'val_acc', 'complexity (nats)', 'informativeness (Recons loss)']
     train_metrics = PerformanceMetrics()
     val_metrics = PerformanceMetrics()
@@ -163,9 +164,12 @@ def train(model, train_data, val_data, viz_data):
         num_correct = np.sum(pred_labels == labels.cpu().numpy())
         num_total = pred_labels.size
         running_acc = running_acc * 0.95 + 0.05 * num_correct / num_total
+        running_mse = running_mse * 0.95 + 0.05 * recons_loss.item() / num_total
         print("Running acc", running_acc)
+        print("Running mse", running_mse)
 
-        if epoch % val_period == val_period - 1 and epoch > 1400:
+        # if epoch % val_period == val_period - 1 and epoch > 2000:
+        if 0.00009 <= running_mse <= 0.00013 and np.random.random() < 0.01 and epoch > 4000:
             # Create a directory to save information, models, etc.
             basepath = savepath + str(epoch) + '/'
             if not os.path.exists(basepath):
@@ -212,14 +216,15 @@ def run():
     elif speaker_type == 'onehot':
         speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=False, variational=variational)
     elif speaker_type == 'vq':
-        speaker = VQ(speaker_inp_dim, comm_dim, num_layers=3, num_protos=330, variational=variational)
+        speaker = VQ(speaker_inp_dim, comm_dim, num_layers=3, num_protos=1000, variational=variational)
     listener = Listener(feature_len, num_distractors + 1, num_layers=2)
     decoder = Decoder(comm_dim, speaker_inp_dim, num_layers=3)
     model = Team(speaker, listener, decoder)
     model.to(settings.device)
 
     train_data = get_feature_data(features_filename, excluded_names=val_classes + test_classes)
-    val_data = get_feature_data(features_filename, desired_names=val_classes)
+    val_data = train_data
+    # val_data = get_feature_data(features_filename, desired_names=val_classes)
     # test_data = get_feature_data(features_filename, desired_names=test_classes)
     viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
     train(model, train_data, val_data, viz_data)
@@ -229,19 +234,21 @@ if __name__ == '__main__':
     feature_len = 512
     see_distractor = False
     num_distractors = 1
-    num_epochs = 5000
-    val_period = 50  # How often to test on the validation set and calculate various info metrics.
+    num_epochs = 20000
+    val_period = 200  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 32
     # kl_incr = 0.0001  # For continuous communication
-    kl_incr = 0.0001  # For VQ-VIB
+    kl_incr = 0.00005  # For VQ-VIB 0.00001 is good but slow.
     # kl_incr = 0.0
-    burnin_epochs = 500
+    burnin_epochs = 2000  # 500 for cont
     variational = True
     # Measuring complexity takes a lot of time. For debugging other features, set to false.
     calculate_complexity = True
-    settings.alpha = 1
-    settings.kl_weight = 0.00001
+    # settings.alpha = 10  # For cont
+    settings.alpha = 10
+    # settings.kl_weight = 0.00001  # For cont
+    settings.kl_weight = 0.0002
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.learned_marginal = False
     with_bbox = False
@@ -251,11 +258,12 @@ if __name__ == '__main__':
                  'animal', 'cow', 'dog', 'cat']
     features_filename = 'data/features.csv' if with_bbox else 'data/features_nobox.csv'
     np.random.seed(0)
-    glove_data = get_glove_vectors()
+    glove_data = get_glove_vectors(comm_dim)
     vae = VAE(512, 32)
     vae.load_state_dict(torch.load('saved_models/vae.pt'))
     vae.to(settings.device)
-
+    settings.embedding_cache = {}
+    settings.sample_first = True
     speaker_type = 'vq'
     seed = 0
     np.random.seed(seed)

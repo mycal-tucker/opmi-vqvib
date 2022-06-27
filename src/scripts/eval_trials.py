@@ -31,12 +31,17 @@ def run():
         plot_scatter([train_complexities, train_informativeness], ['Complexity', 'Informativeness'])
         all_complexities.append(train_complexities)
         all_informativeness.append(train_informativeness)
+    # Add English data, gathered from english_analysis.py
+    all_complexities.append([1.54])
+    all_informativeness.append([-0.00011])
+    sizes = [20, 20, 60]
     plot_multi_trials([all_complexities, all_informativeness],
-                      ['Cont.', 'VQ-VIB'])
+                      ['Cont.', 'VQ-VIB', 'English'],
+                      sizes)
 
 
 if __name__ == '__main__':
     model_types = ['cont', 'vq']
-    seeds = [0, 1, 2]
-    burnins = [10, 10]
+    seeds = [0, 4]
+    burnins = [0, 0]
     run()

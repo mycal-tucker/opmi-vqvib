@@ -23,6 +23,17 @@ def train(data, model):
         optimizer.step()
         running_mse = 0.95 * running_mse + 0.05 * loss.item()
         print("Loss", running_mse)
+    # Now evaluate
+    total_loss = 0
+    num_eval_epochs = 20
+    for epoch in range(num_eval_epochs):
+        print("Eval epoch", epoch, "of", num_eval_epochs)
+        features, embeddings = get_embedding_batch(data, glove_data, batch_size, vae)
+        with torch.no_grad():
+            recons = model(embeddings)
+            loss = torch.mean(((features - recons) ** 2)) / batch_size
+            total_loss += loss.item()
+    print(total_loss / num_eval_epochs)
 
 
 def get_complexity(data):
