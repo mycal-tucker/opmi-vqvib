@@ -42,7 +42,7 @@ def evaluate(model, dataset):
 
 
 def plot_comms(model, dataset, basepath):
-    num_tests = 1  # Don't need to repeat many trials because the probability distribution is generated deterministically.
+    num_tests = 1000  # Generate lots of samples for the same input because it's not deterministic.
     labels = []
     for f in dataset:
         speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
