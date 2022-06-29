@@ -51,6 +51,14 @@ To measure the computational efficiency of English in the manynames dataset, run
 It uses glove embeddings of the English words associated with each image and trains agents to decode the features from those embeddings.
 We can then estimate complexity using MINE (as for emergent communication) between features and embeddings, and informativeness as the MSE of the reconstructions and the original features.
 
-## Current experiment results
+## Interesting experiments/problems
 
-I can train agents to high task success for continuous, onehot, or VQ-VIB communication.
+Here are problems we may want to ask/pursue
+
+| High-level category               | Hypothesis                                                           | Ways to test                                                                                                                                                                                                           |
+|-----------------------------------|----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Info/complexity/utility tradeoffs | Improved informativeness improves generalizability                   | We train agents on a subset of data and then test on a held out subset. We set different info. losses to test if informativeness is helpful.                                                                           |
+| Info/complexity/utility tradeoffs | Penalizing complexity induces compositionality                       | We train agents to communicate via multiple tokens, and we penalize complexity. We show compositional aspects of emergent communication, such as topographic similarity.                                               |
+| VQ-VIB and NLP                    | VQ-VIB embeddings are aligned with English word embeddings           | We measure the correlation between VQ-VIB embeddings and glove embeddings of english words. This is already implemented.                                                                                               |
+| VQ-VIB and NLP                    | Initializing communication with stuff from NLP will improve training | We initialize VQ-VIB agents with glove embedding tokens (do we even make them trainable?) and then train on top. Does training speed converge? Do we even find that agents use the right token for the right category? |
+

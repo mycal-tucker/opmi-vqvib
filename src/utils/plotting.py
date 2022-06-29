@@ -108,9 +108,13 @@ def plot_naming(all_data, viz_method, labels=None, savepath=None, plot_all_color
         if label == -1 or label == '-1':
             pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', facecolors='none', edgecolors='black')
         else:
-            pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', color=mean_color, label=label)
+            pcm = ax.scatter(sub_x, sub_y, s=20, marker='o', color=mean_color)
+        # And plot the centroids (in the transformed coordinate frames) for each label
+        if len(sub_x) > 2:
+            center_x = np.mean(sub_x)
+            center_y = np.mean(sub_y)
+            pcm = ax.scatter([center_x], [center_y], s=200, marker='*', color=mean_color, edgecolors='black')
         last_idx += len(data)
-    plt.legend()
     if savepath is not None:
         plt.savefig(savepath)
     else:
