@@ -3,7 +3,7 @@ import src.settings as settings
 import torch
 
 
-def gen_batch(all_features, batch_size, num_distractors, vae=None):
+def gen_batch(all_features, batch_size, vae=None):
     # Given the dataset of all features, creates a batch of inputs.
     # That's:
     # 1) The speaker's observation
@@ -15,8 +15,8 @@ def gen_batch(all_features, batch_size, num_distractors, vae=None):
     for _ in range(batch_size):
         targ_idx = int(np.random.random() * len(all_features))
         targ_features = all_features[targ_idx]
-        distractor_features = [all_features[int(np.random.random() * len(all_features))] for _ in range(num_distractors)]
-        obs_targ_idx = int(np.random.random() * (num_distractors + 1))  # Pick where to slide the target observation into.
+        distractor_features = [all_features[int(np.random.random() * len(all_features))] for _ in range(settings.num_distractors)]
+        obs_targ_idx = int(np.random.random() * (settings.num_distractors + 1))  # Pick where to slide the target observation into.
         speaker_obs.append(targ_features)
         l_obs = np.expand_dims(np.vstack(distractor_features[:obs_targ_idx] + [targ_features] + distractor_features[obs_targ_idx:]), axis=0)
         listener_obs.append(l_obs)
@@ -29,6 +29,13 @@ def gen_batch(all_features, batch_size, num_distractors, vae=None):
             listener_tensor, _ = vae(listener_tensor)
     label_tensor = torch.Tensor(labels).long().to(settings.device)
     return speaker_tensor, listener_tensor, label_tensor
+
+
+def get_unique_topnames(dataset):
+    unique_topnames = set()
+    for topname in dataset['topname']:
+        unique_topnames.add(topname)
+    return unique_topnames
 
 
 def get_embedding_batch(all_data, embed_data, batch_size, vae=None):

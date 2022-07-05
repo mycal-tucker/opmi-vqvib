@@ -9,6 +9,7 @@ def plot_metrics(metrics, labels, basepath=None):
         plt.plot(metric, label=label)
     plt.legend()
     savepath = 'metrics.png'
+    plt.savefig(savepath)
     if basepath is not None:
         savepath = basepath + savepath
     plt.savefig(savepath)

@@ -25,14 +25,14 @@ class Net(nn.Module):
         return output
 
 
-def get_info(model, dataset, num_distractors, targ_dim, comm_targ=False, batch_size=1024):
+def get_info(model, dataset, targ_dim, comm_targ=False, batch_size=1024):
     # Define a network that takes in the two variables to calculate the MI of.
     mine_net = Net(512, targ_dim)
     mine_net.to(settings.device)
     optimizer = optim.Adam(mine_net.parameters())
     num_epochs = 200
     for epoch in range(num_epochs):
-        speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, num_distractors)
+        speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size)
         with torch.no_grad():
             if comm_targ:
                 targ_var, _, _ = model.speaker(speaker_obs)  # Communication
@@ -52,7 +52,7 @@ def get_info(model, dataset, num_distractors, targ_dim, comm_targ=False, batch_s
     summed_loss = 0
     num_eval_epochs = 20
     for epoch in range(num_eval_epochs):
-        speaker_obs, listener_obs, labels = gen_batch(dataset, 1024, num_distractors)
+        speaker_obs, listener_obs, labels = gen_batch(dataset, 1024)
         with torch.no_grad():
             if comm_targ:
                 targ_var, _, _ = model.speaker(speaker_obs)  # Communication

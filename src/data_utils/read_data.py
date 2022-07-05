@@ -118,7 +118,7 @@ def img_features(id_to_url):
             f.write('\n')
 
 
-def get_feature_data(filename, desired_names=[], excluded_names=[], max_per_class=None):
+def get_feature_data(filename, desired_names=[], excluded_names=[], selected_fraction=None, max_per_class=None):
     # Merge the feature data with the dataset data.
     manynames = load_cleaned_results(filename='data/manynames.tsv')
     data_rows = []
@@ -128,7 +128,7 @@ def get_feature_data(filename, desired_names=[], excluded_names=[], max_per_clas
             data_rows.append((list_data[0], list_data[1:]))
     feature_df = pd.DataFrame(data_rows, columns=['vg_image_id', 'features'])
     merged_df = pd.merge(feature_df, manynames, on=['vg_image_id'])
-    if len(desired_names) == 0 and len(excluded_names) == 0:
+    if len(desired_names) == 0 and len(excluded_names) == 0 and selected_fraction is None:
         return merged_df
     assert len(desired_names) == 0 or len(excluded_names) == 0, "Can't specify both include and exclude"
     if len(desired_names) > 0:
@@ -141,14 +141,46 @@ def get_feature_data(filename, desired_names=[], excluded_names=[], max_per_clas
                 ix = ix[:max_len]
                 all_idxs.extend(ix.tolist())
             merged_df = merged_df.iloc[all_idxs]
+    elif len(excluded_names) > 0:  # Exclude names
+        print("Original size", len(merged_df))
+        merged_df = merged_df[~merged_df['topname'].isin(excluded_names)]
+        print("Filtered topnames size", len(merged_df))
+        indices_to_keep = []
+        merged_df.reset_index(inplace=True)
+        num_discarded = 0
+        for i, response in enumerate(merged_df['responses']):
+            filter_out = False
+            for response_name in response.keys():
+                if response_name in excluded_names:
+                    filter_out = True
+                    break
+            if not filter_out:
+                indices_to_keep.append(i)
+            else:
+                num_discarded += 1
+        print("Discarding", num_discarded, "and keeping", len(indices_to_keep))
+        merged_df = merged_df.iloc[indices_to_keep]
     else:
-        merged_df = merged_df[~merged_df['topname'].isin(desired_names)]
+        # Only keep a random subset of the topnames.
+        selected_names = set()
+        for topname in merged_df['topname']:
+            if np.random.random() < selected_fraction:
+                selected_names.add(topname)
+        merged_df = merged_df[merged_df['topname'].isin(selected_names)]
     merged_df.reset_index(inplace=True)
+    # Count the number of unique words used to describe items in the dataset
+    unique_responses = set()
+    for response in merged_df['responses']:
+        for word in response.keys():
+            unique_responses.add(word)
+    print("Num unique response words:\t", len(unique_responses))
     return merged_df
 
 
 def get_glove_vectors(comm_dim):
     raw_data = pd.read_table('data/glove.6B.100d.txt', sep=" ", index_col=0, header=None, quoting=csv.QUOTE_NONE)
+    if comm_dim > 100:
+        return raw_data
     np_data = np.array(raw_data)
     pca = PCA(n_components=comm_dim)
     new_data = pca.fit_transform(np_data)

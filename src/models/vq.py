@@ -2,10 +2,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from scipy.stats import multivariate_normal
 
 import src.settings as settings
-from src.models.network_utils import reparameterize, gumbel_softmax
+from src.models.network_utils import reparameterize
 
 
 class VQLayer(nn.Module):
