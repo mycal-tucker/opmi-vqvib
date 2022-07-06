@@ -5,9 +5,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.linear_model import LinearRegression
+import random
 
 import src.settings as settings
-from src.data_utils.helper_fns import gen_batch, get_glove_embedding, get_unique_topnames
+from src.data_utils.helper_fns import gen_batch, get_glove_embedding, get_unique_labels
 from src.data_utils.read_data import get_feature_data, get_glove_vectors
 from src.models.decoder import Decoder
 from src.models.listener import Listener
@@ -204,7 +205,7 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
             val_metrics.add_data(epoch, val_complexity, -1 * val_recons, val_acc, settings.kl_weight)
             plot_scatter([train_metrics.complexities, train_metrics.recons],
                          ['Complexity', 'Informativeness'], savepath=basepath + 'info_plane.png')
-            plot_metrics([train_metrics.comm_accs, val_metrics.comm_accs], ['train utility', 'val utility'], basepath=basepath)
+            plot_metrics([train_metrics.comm_accs, val_metrics.comm_accs], ['train utility', 'val utility'], x_axis=train_metrics.epoch_idxs, basepath=basepath)
             # Save the model itself.
             torch.save(model.state_dict(), basepath + 'model.pt')
             train_metrics.to_file(basepath + 'train_metrics')
@@ -225,10 +226,10 @@ def run():
     model.to(settings.device)
 
     train_data = get_feature_data(features_filename, selected_fraction=train_fraction)
-    train_classes = get_unique_topnames(train_data)
-    val_data = get_feature_data(features_filename, excluded_names=train_classes)
+    train_topnames, train_responses = get_unique_labels(train_data)
+    val_data = get_feature_data(features_filename, excluded_names=train_responses)
     # test_data = get_feature_data(features_filename, desired_names=test_classes)
-    viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
+    viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40) if do_plot_comms else train_data
     train(model, train_data, val_data, viz_data, vae=vae_model, savepath=save_loc, comm_dim=c_dim, num_epochs=n_epochs,
           batch_size=b_size, burnin_epochs=num_burnin, val_period=v_period, plot_comms_flag=do_plot_comms,
           calculate_complexity=do_calc_complexity)
@@ -252,7 +253,7 @@ if __name__ == '__main__':
     # Measuring complexity takes a lot of time. For debugging other features, set to false.
     do_calc_complexity = False
     do_plot_comms = False
-    settings.alpha = 10  # For cont
+    settings.alpha = 0  # For cont
     # settings.alpha = 10
     settings.kl_weight = 0.00001  # For cont
     # settings.kl_weight = 0.01  # For onehot, to prevent nan in trainng.
@@ -260,7 +261,7 @@ if __name__ == '__main__':
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.learned_marginal = False
     with_bbox = False
-    train_fraction = 0.3
+    train_fraction = 0.1
     test_classes = ['couch', 'counter', 'bowl']
     viz_names = ['airplane', 'plane',
                  'animal', 'cow', 'dog', 'cat']
@@ -274,6 +275,7 @@ if __name__ == '__main__':
     settings.sample_first = True
     speaker_type = 'vq'  # Options are 'vq', 'cont', or 'onehot'
     seed = 0
+    random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     save_loc = 'saved_models/' + speaker_type + '/seed' + str(seed) + '/'

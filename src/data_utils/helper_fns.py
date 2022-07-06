@@ -31,11 +31,15 @@ def gen_batch(all_features, batch_size, vae=None):
     return speaker_tensor, listener_tensor, label_tensor
 
 
-def get_unique_topnames(dataset):
+def get_unique_labels(dataset):
     unique_topnames = set()
     for topname in dataset['topname']:
         unique_topnames.add(topname)
-    return unique_topnames
+    unique_responses = set()
+    for responses in dataset['responses']:
+        for k in responses.keys():
+            unique_responses.add(k)
+    return unique_topnames, unique_responses
 
 
 def get_embedding_batch(all_data, embed_data, batch_size, vae=None):

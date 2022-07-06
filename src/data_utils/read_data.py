@@ -14,6 +14,7 @@ import torch.nn as nn
 import torchvision.models as models
 from PIL import Image
 from sklearn.decomposition import PCA
+from src.data_utils.helper_fns import get_unique_labels
 
 
 # %% ---- FUNCTION TO LOAD MANYNAMES.TSV
@@ -144,7 +145,7 @@ def get_feature_data(filename, desired_names=[], excluded_names=[], selected_fra
     elif len(excluded_names) > 0:  # Exclude names
         print("Original size", len(merged_df))
         merged_df = merged_df[~merged_df['topname'].isin(excluded_names)]
-        print("Filtered topnames size", len(merged_df))
+        print("Filtered by topnames size", len(merged_df))
         indices_to_keep = []
         merged_df.reset_index(inplace=True)
         num_discarded = 0
@@ -158,14 +159,15 @@ def get_feature_data(filename, desired_names=[], excluded_names=[], selected_fra
                 indices_to_keep.append(i)
             else:
                 num_discarded += 1
-        print("Discarding", num_discarded, "and keeping", len(indices_to_keep))
+        print("Filtered by all responses: discarding", num_discarded, "and keeping", len(indices_to_keep))
         merged_df = merged_df.iloc[indices_to_keep]
     else:
         # Only keep a random subset of the topnames.
+        unique_topnames, _ = get_unique_labels(merged_df)
         selected_names = set()
-        for topname in merged_df['topname']:
+        for name in sorted(unique_topnames):  # Sorting is important for reproducibility.
             if np.random.random() < selected_fraction:
-                selected_names.add(topname)
+                selected_names.add(name)
         merged_df = merged_df[merged_df['topname'].isin(selected_names)]
     merged_df.reset_index(inplace=True)
     # Count the number of unique words used to describe items in the dataset
@@ -174,6 +176,7 @@ def get_feature_data(filename, desired_names=[], excluded_names=[], selected_fra
         for word in response.keys():
             unique_responses.add(word)
     print("Num unique response words:\t", len(unique_responses))
+    print("Overall dataset size:\t", len(merged_df))
     return merged_df
 
 

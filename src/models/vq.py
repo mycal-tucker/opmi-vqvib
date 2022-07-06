@@ -35,8 +35,8 @@ class VQLayer(nn.Module):
 
         # Compute the entropy of the distribution for which prototypes are used. Uses a differentiable approximation
         # for the distributions.
-        ent = self.get_categorical_ent(dists_to_protos)
-        vq_loss += 0.01 * ent
+        # ent = self.get_categorical_ent(dists_to_protos)
+        # vq_loss += 0.01 * ent
 
         # Add the residue back to the latents
         quantized_latents = latents + (quantized_latents - latents).detach()

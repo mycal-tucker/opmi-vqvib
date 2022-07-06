@@ -4,9 +4,12 @@ from sklearn.metrics import euclidean_distances
 from sklearn.manifold import MDS, TSNE
 
 
-def plot_metrics(metrics, labels, basepath=None):
+def plot_metrics(metrics, labels, x_axis=None, basepath=None):
     for metric, label in zip(metrics, labels):
-        plt.plot(metric, label=label)
+        if x_axis is not None:
+            plt.plot(x_axis, metric, label=label)
+        else:
+            plt.plot(metric, label=label)
     plt.legend()
     savepath = 'metrics.png'
     plt.savefig(savepath)
@@ -39,6 +42,40 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, savepath=None):
     plt.ylabel('Negative MSE')
     plt.legend()
     plt.tight_layout()
+    plt.show()
+
+
+def plot_multi_metrics(multi_metrics):
+    fig, ax = plt.subplots()
+    comm_to_color = {'cont': 'b', 'vq': 'g'}
+    for comm_type, metrics in multi_metrics.items():
+        if comm_type not in comm_to_color.keys():
+            print("Bad comm type", comm_type)
+        color = comm_to_color.get(comm_type)
+        # Now unpack the results for each random seed
+        all_trains = []
+        all_vals = []
+        for trial_idx in range(len(metrics[0])):
+            train_accs = metrics[0][trial_idx]
+            val_accs = metrics[1][trial_idx]
+            epochs = metrics[-1][trial_idx]
+            plt.plot(epochs, train_accs, color, alpha=0.2)
+            # Dashed for validation data.
+            plt.plot(epochs, val_accs, color + '--', alpha=0.2)
+            # And calculate overall metrics
+            all_trains.append(train_accs)
+            all_vals.append(val_accs)
+        mean_train = np.median(np.vstack(all_trains), axis=0)
+        mean_val = np.median(np.vstack(all_vals), axis=0)
+        plt.plot(epochs, mean_train, color, label=comm_type + ' train')
+        # Dashed for validation data.
+        plt.plot(epochs, mean_val, color + '--', label=comm_type + ' val')
+    plt.legend()
+    plt.xlabel('Training epoch')
+    plt.ylabel('Communicative accuracy (%)')
+    plt.ylim(0.48, 1.02)
+    plt.tight_layout()
+    plt.savefig('trials.png')
     plt.show()
 
 
