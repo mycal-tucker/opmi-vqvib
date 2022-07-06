@@ -23,12 +23,12 @@ from src.utils.performance_metrics import PerformanceMetrics
 
 def evaluate(model, dataset, batch_size, vae):
     model.eval()
-    num_test_batches = 50
+    num_test_batches = 100
     num_correct = 0
     total_recons_loss = 0
     num_total = 0
     for _ in range(num_test_batches):
-        speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, vae=vae)
+        speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, vae=vae, see_distractors=settings.see_distractor)
         with torch.no_grad():
             outputs, _, _, recons = model(speaker_obs, listener_obs)
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
@@ -151,10 +151,12 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
             settings.kl_weight += settings.kl_incr
         print('epoch', epoch, 'of', num_epochs)
         print("Kl weight", settings.kl_weight)
-        speaker_obs, listener_obs, labels = gen_batch(train_features, batch_size, vae=vae)
+        speaker_obs, listener_obs, labels = gen_batch(train_features, batch_size, vae=vae, see_distractors=settings.see_distractor)
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
         loss = criterion(outputs, labels)
+        if len(speaker_obs.shape) == 2:
+            speaker_obs = torch.unsqueeze(speaker_obs, 1)
         recons_loss = torch.mean(((speaker_obs - recons) ** 2))
         loss += settings.alpha * recons_loss
         loss += speaker_loss
@@ -213,15 +215,15 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
 
 
 def run():
-    speaker_inp_dim = feature_len if not see_distractor else (num_distractors + 1) * feature_len
+    num_imgs = 1 if not settings.see_distractor else (num_distractors + 1)
     if speaker_type == 'cont':
-        speaker = MLP(speaker_inp_dim, c_dim, num_layers=3, onehot=False, variational=variational)
+        speaker = MLP(feature_len, c_dim, num_layers=3, onehot=False, variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'onehot':
-        speaker = MLP(speaker_inp_dim, c_dim, num_layers=3, onehot=True, variational=variational)
+        speaker = MLP(feature_len, c_dim, num_layers=3, onehot=True, variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'vq':
-        speaker = VQ(speaker_inp_dim, c_dim, num_layers=3, num_protos=1763, variational=variational)
-    listener = Listener(feature_len, num_distractors + 1, num_layers=2)
-    decoder = Decoder(c_dim, speaker_inp_dim, num_layers=3)
+        speaker = VQ(feature_len, c_dim, num_layers=3, num_protos=1763, variational=variational, num_imgs=num_imgs)
+    listener = Listener(feature_len, num_imgs + num_distractors + 1, num_distractors + 1, num_layers=2)
+    decoder = Decoder(c_dim, feature_len, num_layers=3, num_imgs=num_imgs)
     model = Team(speaker, listener, decoder)
     model.to(settings.device)
 
@@ -237,7 +239,7 @@ def run():
 
 if __name__ == '__main__':
     feature_len = 512
-    see_distractor = False
+    settings.see_distractor = False
     num_distractors = 1
     settings.num_distractors = num_distractors
     n_epochs = 3000
@@ -253,7 +255,7 @@ if __name__ == '__main__':
     # Measuring complexity takes a lot of time. For debugging other features, set to false.
     do_calc_complexity = False
     do_plot_comms = False
-    settings.alpha = 0  # For cont
+    settings.alpha = 10  # For cont
     # settings.alpha = 10
     settings.kl_weight = 0.00001  # For cont
     # settings.kl_weight = 0.01  # For onehot, to prevent nan in trainng.

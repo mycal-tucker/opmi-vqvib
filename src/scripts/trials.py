@@ -14,15 +14,15 @@ from src.scripts.main import train
 
 
 def run_trial():
-    speaker_inp_dim = feature_len if not see_distractor else (num_distractors + 1) * feature_len
+    num_imgs = 1 if not settings.see_distractor else (num_distractors + 1)
     if speaker_type == 'cont':
-        speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=False, variational=variational)
+        speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=False, variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'onehot':
-        speaker = MLP(speaker_inp_dim, comm_dim, num_layers=3, onehot=True, variational=variational)
+        speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=True, variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'vq':
-        speaker = VQ(speaker_inp_dim, comm_dim, num_layers=3, num_protos=1763, variational=variational)
-    listener = Listener(feature_len, num_distractors + 1, num_layers=2)
-    decoder = Decoder(comm_dim, speaker_inp_dim, num_layers=3)
+        speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=1763, variational=variational, num_imgs=num_imgs)
+    listener = Listener(feature_len,  num_imgs + num_distractors + 1, num_distractors + 1, num_layers=2)
+    decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=num_imgs)
     model = Team(speaker, listener, decoder)
     model.to(settings.device)
 
@@ -37,7 +37,7 @@ def run_trial():
 
 if __name__ == '__main__':
     feature_len = 512
-    see_distractor = False
+    settings.see_distractor = False
     num_distractors = 1
     num_epochs = 10000
     num_burnin = 500
