@@ -17,7 +17,8 @@ def run():
         epochs = []
         all_accs[speaker_type] = [train_accs, val_accs, epochs]
         for seed in seeds:
-            basepath = 'saved_models/alpha0_noent/' + speaker_type + '/seed' + str(seed) + '/'
+            # basepath = 'saved_models/alpha0_noent/' + speaker_type + '/seed' + str(seed) + '/'
+            basepath = 'saved_models/alpha10_noent_' + str(speaker_type) + 'tok_fixed/vq/seed' + str(seed) + '/'
             if not os.path.exists(basepath):
                 print("Path doesn't exist", basepath)
                 continue
@@ -50,7 +51,9 @@ def run():
 
 
 if __name__ == '__main__':
-    model_types = ['cont', 'vq']
+    # model_types = ['cont', 'vq']
+    # model_types = ['vq']
+    model_types = ['1', '2', '4', '8']
     seeds = [0, 1, 2]
-    burnins = [0, 0]
+    burnins = [0, 0, 0, 0]
     run()

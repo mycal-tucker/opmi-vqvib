@@ -47,7 +47,8 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, savepath=None):
 
 def plot_multi_metrics(multi_metrics):
     fig, ax = plt.subplots()
-    comm_to_color = {'cont': 'b', 'vq': 'g'}
+    # comm_to_color = {'cont': 'b', 'vq': 'g'}
+    comm_to_color = {'1': 'g', '2': 'b', '4': 'r', '8': 'm'}
     for comm_type, metrics in multi_metrics.items():
         if comm_type not in comm_to_color.keys():
             print("Bad comm type", comm_type)
@@ -65,8 +66,8 @@ def plot_multi_metrics(multi_metrics):
             # And calculate overall metrics
             all_trains.append(train_accs)
             all_vals.append(val_accs)
-        mean_train = np.median(np.vstack(all_trains), axis=0)
-        mean_val = np.median(np.vstack(all_vals), axis=0)
+        mean_train = np.mean(np.vstack(all_trains), axis=0)
+        mean_val = np.mean(np.vstack(all_vals), axis=0)
         plt.plot(epochs, mean_train, color, label=comm_type + ' train')
         # Dashed for validation data.
         plt.plot(epochs, mean_val, color + '--', label=comm_type + ' val')

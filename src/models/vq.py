@@ -55,27 +55,29 @@ class VQLayer(nn.Module):
 
 
 class VQ(nn.Module):
-    def __init__(self, input_dim, output_dim, num_layers, num_protos, variational=False, num_imgs=1):
+    def __init__(self, input_dim, output_dim, num_layers, num_protos, num_simultaneous_tokens=1, variational=False, num_imgs=1):
         super(VQ, self).__init__()
         self.input_dim = input_dim
-        self.output_dim = output_dim
+        self.comm_dim = output_dim
+        self.proto_latent_dim = int(self.comm_dim / num_simultaneous_tokens)
         self.hidden_dim = 64
         self.num_tokens = num_protos  # Need this general variable for num tokens
+        self.num_simultaneous_tokens = num_simultaneous_tokens
         self.variational = variational
         self.num_imgs = num_imgs
         self.feature_embed_dim = 16
         self.feature_embedder = nn.Linear(input_dim, self.feature_embed_dim)
         in_dim = self.feature_embed_dim * num_imgs
-        out_dim = self.hidden_dim if num_layers > 1 else output_dim
+        out_dim = self.hidden_dim if num_layers > 1 else self.comm_dim
         self.layers = nn.ModuleList()
         while len(self.layers) < num_layers:
             self.layers.append(nn.Linear(in_dim, out_dim))
             in_dim = out_dim
-            out_dim = self.hidden_dim if len(self.layers) < num_layers - 1 else output_dim
-        self.vq_layer = VQLayer(num_protos, output_dim)
-        self.fc_mu = nn.Linear(output_dim, output_dim)
+            out_dim = self.hidden_dim if len(self.layers) < num_layers - 1 else self.comm_dim
+        self.vq_layer = VQLayer(num_protos, self.proto_latent_dim)
+        self.fc_mu = nn.Linear(self.proto_latent_dim, self.proto_latent_dim)
         if variational:
-            self.fc_var = nn.Linear(output_dim, output_dim)
+            self.fc_var = nn.Linear(self.proto_latent_dim, self.proto_latent_dim)
             # Learnable prior is initialized to match a unit Gaussian.
             if settings.learned_marginal:
                 self.prior_mu = nn.Parameter(data=torch.Tensor(out_dim))
@@ -91,18 +93,17 @@ class VQ(nn.Module):
             x = layer(x)
             x = F.relu(x)
         if self.variational:
-            logvar = self.fc_var(x)
-            if not settings.sample_first:  # Choose a prototype and then sample around it
-                # Quantize the vectors
-                quantized, proto_loss = self.vq_layer(x)
-                output = reparameterize(quantized, logvar) if not self.eval_mode else quantized
-                relevant_mu = quantized
-            else:  # Sample in the space and then choose the closest prototype
-                mu = self.fc_mu(x)
-                sample = reparameterize(mu, logvar) if not self.eval_mode else mu
-                # Quantize the vectors
-                output, proto_loss = self.vq_layer(sample)
-                relevant_mu = mu
+            # Sample in the space and then choose the closest prototype
+            # This reshaping handles the desire to have multiple tokens in a single message.
+            reshaped = torch.reshape(x, (-1, self.proto_latent_dim))
+            mu = self.fc_mu(reshaped)
+            logvar = self.fc_var(reshaped)
+            sample = reparameterize(mu, logvar) if not self.eval_mode else mu
+            # Quantize the vectors
+            output, proto_loss = self.vq_layer(sample)
+            # Regroup the tokens into messages, now with possibly multiple tokens.
+            output = torch.reshape(output, (-1, self.comm_dim))
+            relevant_mu = mu
             # Compute the KL divergence
             if not settings.learned_marginal:
                 kld_loss = torch.mean(-0.5 * torch.sum(1 + logvar - relevant_mu ** 2 - logvar.exp(), dim=1), dim=0)

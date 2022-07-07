@@ -23,7 +23,7 @@ from src.utils.performance_metrics import PerformanceMetrics
 
 def evaluate(model, dataset, batch_size, vae):
     model.eval()
-    num_test_batches = 100
+    num_test_batches = 50  # FIXME
     num_correct = 0
     total_recons_loss = 0
     num_total = 0
@@ -221,7 +221,8 @@ def run():
     elif speaker_type == 'onehot':
         speaker = MLP(feature_len, c_dim, num_layers=3, onehot=True, variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'vq':
-        speaker = VQ(feature_len, c_dim, num_layers=3, num_protos=1763, variational=variational, num_imgs=num_imgs)
+        # speaker = VQ(feature_len, c_dim, num_layers=3, num_protos=1763, num_simultaneous_tokens=8, variational=variational, num_imgs=num_imgs)
+        speaker = VQ(feature_len, c_dim, num_layers=3, num_protos=32, num_simultaneous_tokens=8, variational=variational, num_imgs=num_imgs)
     listener = Listener(feature_len, num_imgs + num_distractors + 1, num_distractors + 1, num_layers=2)
     decoder = Decoder(c_dim, feature_len, num_layers=3, num_imgs=num_imgs)
     model = Team(speaker, listener, decoder)
@@ -230,8 +231,10 @@ def run():
     train_data = get_feature_data(features_filename, selected_fraction=train_fraction)
     train_topnames, train_responses = get_unique_labels(train_data)
     val_data = get_feature_data(features_filename, excluded_names=train_responses)
+    # val_data = train_data  # For debugging, it's faster to just reuse datasets
     # test_data = get_feature_data(features_filename, desired_names=test_classes)
-    viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40) if do_plot_comms else train_data
+    # viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40) if do_plot_comms else train_data
+    viz_data = train_data  # For debugging, it's faster to just reuse datasets
     train(model, train_data, val_data, viz_data, vae=vae_model, savepath=save_loc, comm_dim=c_dim, num_epochs=n_epochs,
           batch_size=b_size, burnin_epochs=num_burnin, val_period=v_period, plot_comms_flag=do_plot_comms,
           calculate_complexity=do_calc_complexity)
@@ -246,7 +249,7 @@ if __name__ == '__main__':
     v_period = 200  # How often to test on the validation set and calculate various info metrics.
     num_burnin = 500
     b_size = 1024
-    c_dim = 32
+    c_dim = 128
     # comm_dim = 1000  # For onehot, probably want a big comm dim to have lots of unique tokens.
     # kl_incr = 0.0001  # For continuous communication
     # kl_incr = 0.00005  # For VQ-VIB 0.00001 is good but slow.
@@ -255,7 +258,7 @@ if __name__ == '__main__':
     # Measuring complexity takes a lot of time. For debugging other features, set to false.
     do_calc_complexity = False
     do_plot_comms = False
-    settings.alpha = 10  # For cont
+    settings.alpha = 1  # For cont
     # settings.alpha = 10
     settings.kl_weight = 0.00001  # For cont
     # settings.kl_weight = 0.01  # For onehot, to prevent nan in trainng.
@@ -263,7 +266,7 @@ if __name__ == '__main__':
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.learned_marginal = False
     with_bbox = False
-    train_fraction = 0.1
+    train_fraction = 0.5
     test_classes = ['couch', 'counter', 'bowl']
     viz_names = ['airplane', 'plane',
                  'animal', 'cow', 'dog', 'cat']
