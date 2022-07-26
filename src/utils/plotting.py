@@ -45,38 +45,34 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, savepath=None):
     plt.show()
 
 
-def plot_multi_metrics(multi_metrics):
+def plot_multi_metrics(multi_metrics, file_root=''):
     fig, ax = plt.subplots()
-    # comm_to_color = {'cont': 'b', 'vq': 'g'}
-    comm_to_color = {'1': 'g', '2': 'b', '4': 'r', '8': 'm'}
+    labels = ['Train 2', 'Train 4', 'Train 8', 'Val 2', 'Val 4', 'Val 8']
+    comm_to_color = {0: 'tab:blue', 1: 'tab:green', 2: 'tab:olive', 3: 'tab:red', 4: 'tab:purple', 5: 'tab:pink'}
     for comm_type, metrics in multi_metrics.items():
-        if comm_type not in comm_to_color.keys():
-            print("Bad comm type", comm_type)
-        color = comm_to_color.get(comm_type)
-        # Now unpack the results for each random seed
-        all_trains = []
-        all_vals = []
-        for trial_idx in range(len(metrics[0])):
-            train_accs = metrics[0][trial_idx]
-            val_accs = metrics[1][trial_idx]
-            epochs = metrics[-1][trial_idx]
-            plt.plot(epochs, train_accs, color, alpha=0.2)
-            # Dashed for validation data.
-            plt.plot(epochs, val_accs, color + '--', alpha=0.2)
-            # And calculate overall metrics
-            all_trains.append(train_accs)
-            all_vals.append(val_accs)
-        mean_train = np.mean(np.vstack(all_trains), axis=0)
-        mean_val = np.mean(np.vstack(all_vals), axis=0)
-        plt.plot(epochs, mean_train, color, label=comm_type + ' train')
-        # Dashed for validation data.
-        plt.plot(epochs, mean_val, color + '--', label=comm_type + ' val')
+        # color = comm_to_color.get(comm_type)
+        num_metrics = len(metrics) - 1  # Last one is just epoch
+        epochs = metrics[-1]
+        overalls = [[] for _ in range(num_metrics)]
+        # Iterate over evaluation sets
+        for eval_idx, eval_type in enumerate(metrics[:-1]):
+            # Now iterate over trials.
+            color = comm_to_color[eval_idx]
+            linestyle = 'solid' if eval_idx < num_metrics / 2 else 'dashed'
+            for trial_idx in range(len(eval_type)):
+                accs = metrics[eval_idx][trial_idx]
+                plt.plot(epochs, accs, color, linestyle='dashed', alpha=0.2)
+                overalls[eval_idx].append(accs)
+            mean_overall = np.median(np.vstack(overalls[eval_idx]), axis=0)
+            plt.plot(epochs, mean_overall, color, linestyle=linestyle, label=labels[eval_idx])
     plt.legend()
     plt.xlabel('Training epoch')
     plt.ylabel('Communicative accuracy (%)')
     plt.ylim(0.48, 1.02)
+    if file_root is not None:
+        plt.title(file_root)
     plt.tight_layout()
-    plt.savefig('trials.png')
+    plt.savefig(file_root + 'trials.png')
     plt.show()
 
 

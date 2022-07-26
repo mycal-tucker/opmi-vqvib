@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 
 
@@ -12,6 +11,5 @@ class Team(nn.Module):
     def forward(self, speaker_x, listener_x):
         comm, speaker_loss, info = self.speaker(speaker_x)
         recons = self.decoder(comm)
-        listener_obs = torch.hstack([recons, listener_x])
-        prediction = self.listener(listener_obs)
+        prediction = self.listener(recons, listener_x)
         return prediction, speaker_loss, info, recons

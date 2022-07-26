@@ -21,7 +21,7 @@ def run_trial():
         speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=True, variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'vq':
         speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, num_simultaneous_tokens=num_tokens, variational=variational, num_imgs=num_imgs)
-    listener = Listener(feature_len,  num_imgs + num_distractors + 1, num_distractors + 1, num_layers=2)
+    listener = Listener(feature_len)
     decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=num_imgs)
     model = Team(speaker, listener, decoder)
     model.to(settings.device)
@@ -40,42 +40,43 @@ if __name__ == '__main__':
     feature_len = 512
     settings.see_distractor = False
     num_distractors = 1
-    num_epochs = 5000
+    num_epochs = 1000  # 1000 is way too short, but it's quick for debugging.
     num_burnin = 500
     val_period = 500  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 128
     features_filename = 'data/features_nobox.csv'
 
-    viz_names = ['airplane', 'plane',
-                 'animal', 'cow', 'dog', 'cat']
     train_fraction = 0.5
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    settings.kl_weight = 0.00001  # For cont
+    settings.kl_weight = 0.0  # For cont
     settings.kl_incr = 0.0
     settings.num_distractors = num_distractors
     settings.learned_marginal = False
     settings.embedding_cache = {}
     settings.sample_first = True
-    settings.alpha = 10
     variational = True
 
     vae = VAE(512, 32)
     vae.load_state_dict(torch.load('saved_models/vae0.001.pt'))
     vae.to(settings.device)
 
-    num_tokens = 1
-    num_unique_messages = 3 ** 8
-    num_prototypes = int(num_unique_messages ** (1 / num_tokens))
+    num_tokens = 8
+    # num_unique_messages = 3 ** 8
+    # num_prototypes = int(num_unique_messages ** (1 / num_tokens))
+    num_prototypes = 32
 
-    seeds = [i for i in range(3)]
+    seeds = [i for i in range(1)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
-    for seed in seeds:
-        for speaker_type in comm_types:
-            print("Training comm type", speaker_type, "seed", seed)
-            random.seed(seed)
-            np.random.seed(seed)
-            torch.manual_seed(seed)
-            savepath = 'saved_models/alpha' + str(settings.alpha) + '_noent_' + str(num_tokens) + 'tok_fixed/' + speaker_type + '/seed' + str(seed) + '/'
-            run_trial()
+    for num_tokens in [8, 4, 2, 1]:
+        for alpha in [10, 0]:
+            settings.alpha = alpha
+            for seed in seeds:
+                for speaker_type in comm_types:
+                    print("Training comm type", speaker_type, "seed", seed)
+                    random.seed(seed)
+                    np.random.seed(seed)
+                    torch.manual_seed(seed)
+                    savepath = 'saved_models/alpha' + str(settings.alpha) + '_' + str(num_tokens) + 'tok/' + speaker_type + '/seed' + str(seed) + '/'
+                    run_trial()

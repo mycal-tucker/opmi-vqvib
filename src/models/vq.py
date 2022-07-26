@@ -65,9 +65,8 @@ class VQ(nn.Module):
         self.num_simultaneous_tokens = num_simultaneous_tokens
         self.variational = variational
         self.num_imgs = num_imgs
-        self.feature_embed_dim = 16
-        self.feature_embedder = nn.Linear(input_dim, self.feature_embed_dim)
-        in_dim = self.feature_embed_dim * num_imgs
+        self.feature_embedder = nn.Linear(input_dim, self.hidden_dim)
+        in_dim = self.hidden_dim * num_imgs
         out_dim = self.hidden_dim if num_layers > 1 else self.comm_dim
         self.layers = nn.ModuleList()
         while len(self.layers) < num_layers:
@@ -88,7 +87,7 @@ class VQ(nn.Module):
 
     def forward(self, x):
         embedded_features = self.feature_embedder(x)
-        x = torch.reshape(embedded_features, (-1, self.feature_embed_dim * self.num_imgs))
+        x = torch.reshape(embedded_features, (-1, self.hidden_dim * self.num_imgs))
         for i, layer in enumerate(self.layers):
             x = layer(x)
             x = F.relu(x)

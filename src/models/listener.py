@@ -1,20 +1,21 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
 class Listener(nn.Module):
-    def __init__(self, feature_dim, num_imgs, num_classifications, num_layers=2):
+    def __init__(self, feature_dim):
         super(Listener, self).__init__()
         self.feature_embed_dim = 16
-        self.num_imgs = num_imgs
+        self.comm_embedder = nn.Linear(feature_dim, self.feature_embed_dim)
         self.feature_embedder = nn.Linear(feature_dim, self.feature_embed_dim)
-        self.fc1 = nn.Linear(self.feature_embed_dim * num_imgs, 64)
-        self.fc2 = nn.Linear(64, num_classifications)
+        self.cos = nn.CosineSimilarity(dim=2, eps=1e-6)
 
-    def forward(self, features):
+    def forward(self, comm_embedding, features):
+        embedded_comm = self.comm_embedder(comm_embedding)
+        num_imgs = features.shape[1]
+        embedded_comm = embedded_comm.repeat(1, num_imgs, 1)
         embedded_features = self.feature_embedder(features)
-        features_reshaped = torch.reshape(embedded_features, (-1, self.feature_embed_dim * self.num_imgs))
-        hidden1 = F.relu(self.fc1(features_reshaped))
-        logits = self.fc2(hidden1)
+        # Get cosine similarities
+        cosines = self.cos(embedded_comm, embedded_features)
+        logits = F.log_softmax(cosines)
         return logits

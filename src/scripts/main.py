@@ -21,15 +21,15 @@ from src.utils.plotting import plot_metrics, plot_naming, plot_scatter
 from src.utils.performance_metrics import PerformanceMetrics
 
 
-def evaluate(model, dataset, batch_size, vae):
+def evaluate(model, dataset, batch_size, vae, num_dist=None):
     model.eval()
-    num_test_batches = 50  # FIXME
+    num_test_batches = 10
     num_correct = 0
     total_recons_loss = 0
     num_total = 0
     for _ in range(num_test_batches):
-        speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, vae=vae, see_distractors=settings.see_distractor)
         with torch.no_grad():
+            speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, vae=vae, see_distractors=settings.see_distractor, num_dist=num_dist)
             outputs, _, _, recons = model(speaker_obs, listener_obs)
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
         num_correct += np.sum(pred_labels == labels.cpu().numpy())
@@ -143,9 +143,9 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
     optimizer = optim.Adam(model.parameters())
     running_acc = 0
     running_mse = 0
-    metric_labels = ['train_acc', 'val_acc', 'complexity (nats)', 'informativeness (Recons loss)']
-    train_metrics = PerformanceMetrics()
-    val_metrics = PerformanceMetrics()
+    num_cand_to_metrics = {2: [], 4: [], 8: []}
+    for empty_list in num_cand_to_metrics.values():
+        empty_list.extend([PerformanceMetrics(), PerformanceMetrics()])  # Train metrics, validation metrics
     for epoch in range(num_epochs):
         if epoch > burnin_epochs:
             settings.kl_weight += settings.kl_incr
@@ -160,6 +160,8 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
         recons_loss = torch.mean(((speaker_obs - recons) ** 2))
         loss += settings.alpha * recons_loss
         loss += speaker_loss
+        print("Speaker loss fraction:\t", speaker_loss.item() / loss.item())
+        print("Recons loss fraction:\t", settings.alpha * recons_loss.item() / loss.item())
         loss.backward()
         optimizer.step()
 
@@ -173,22 +175,11 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
         print("Running mse", running_mse)
 
         if epoch % val_period == val_period - 1:
-        # if 0.00009 <= running_mse <= 0.00013 and np.random.random() < 0.01 and epoch > 4000:
             # Create a directory to save information, models, etc.
             basepath = savepath + str(epoch) + '/'
             if not os.path.exists(basepath):
                 os.makedirs(basepath)
-            train_acc, train_recons = evaluate(model, train_features, batch_size, vae)
-            val_acc, val_recons = evaluate(model, val_features, batch_size, vae)
-            # Visualize some of the communication
-            try:
-                if plot_comms_flag:
-                    plot_comms(model, viz_data['features'], basepath)
-            except AssertionError:
-                print("Can't plot comms for whatever reason (e.g., continuous communication makes categorizing hard)")
-            # And compare to english word embeddings
-            # word_embed_r2, pairwise_r2 = get_embedding_alignment(model, viz_data)
-            # And calculate efficiency values like complexity and informativeness.
+            # Calculate efficiency values like complexity and informativeness.
             # Can estimate complexity by sampling inputs and measuring communication probabilities.
             # get_probs(model.speaker, train_data)
             # Or we can use MINE to estimate complexity and informativeness.
@@ -201,18 +192,38 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
             else:
                 train_complexity = None
                 val_complexity = None
-            # informativeness = get_info(model, train_features, targ_dim=feature_len, comm_targ=False)
-            informativeness = -1 * val_recons
-            train_metrics.add_data(epoch, train_complexity, -1 * train_recons, train_acc, settings.kl_weight)
-            val_metrics.add_data(epoch, val_complexity, -1 * val_recons, val_acc, settings.kl_weight)
-            plot_scatter([train_metrics.complexities, train_metrics.recons],
-                         ['Complexity', 'Informativeness'], savepath=basepath + 'info_plane.png')
-            plot_metrics([train_metrics.comm_accs, val_metrics.comm_accs], ['train utility', 'val utility'], x_axis=train_metrics.epoch_idxs, basepath=basepath)
-            # Save the model itself.
+            complexities = [train_complexity, val_complexity]
+            eval_batch_size = 256
+            for feature_idx, features in enumerate([train_features, val_features]):
+                for num_candidates in num_cand_to_metrics.keys():
+                    acc, recons = evaluate(model, features, eval_batch_size, vae, num_dist=num_candidates - 1)
+                    relevant_metrics = num_cand_to_metrics.get(num_candidates)[feature_idx]
+                    relevant_metrics.add_data(epoch, complexities[feature_idx], -1 * recons, acc, settings.kl_weight)
+            # Plot some of the metrics for online visualization
+            comm_accs = []
+            labels = []
+            epoch_idxs = None
+            for feature_idx, label in enumerate(['train', 'val']):
+                for num_candidates in sorted(num_cand_to_metrics.keys()):
+                    comm_accs.append(num_cand_to_metrics.get(num_candidates)[feature_idx].comm_accs)
+                    labels.append(" ".join([label, str(num_candidates), "utility"]))
+                    if epoch_idxs is None:
+                        epoch_idxs = num_cand_to_metrics.get(num_candidates)[feature_idx].epoch_idxs
+            plot_metrics(comm_accs, labels, epoch_idxs, basepath=basepath)
+            # Visualize some of the communication
+            try:
+                if plot_comms_flag:
+                    plot_comms(model, viz_data['features'], basepath)
+            except AssertionError:
+                print("Can't plot comms for whatever reason (e.g., continuous communication makes categorizing hard)")
+            # And compare to english word embeddings
+            # word_embed_r2, pairwise_r2 = get_embedding_alignment(model, viz_data)
+            # Save the model and metrics to files.
             torch.save(model.state_dict(), basepath + 'model.pt')
-            train_metrics.to_file(basepath + 'train_metrics')
-            val_metrics.to_file(basepath + 'val_metrics')
-
+            for feature_idx, label in enumerate(['train', 'val']):
+                for num_candidates in sorted(num_cand_to_metrics.keys()):
+                    metric = num_cand_to_metrics.get(num_candidates)[feature_idx]
+                    metric.to_file(basepath + "_".join([label, str(num_candidates), "metrics"]))
 
 def run():
     num_imgs = 1 if not settings.see_distractor else (num_distractors + 1)
@@ -221,9 +232,9 @@ def run():
     elif speaker_type == 'onehot':
         speaker = MLP(feature_len, c_dim, num_layers=3, onehot=True, variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'vq':
-        # speaker = VQ(feature_len, c_dim, num_layers=3, num_protos=1763, num_simultaneous_tokens=8, variational=variational, num_imgs=num_imgs)
+        # speaker = VQ(feature_len, c_dim, num_layers=3, num_protos=1763, num_simultaneous_tokens=1, variational=variational, num_imgs=num_imgs)
         speaker = VQ(feature_len, c_dim, num_layers=3, num_protos=32, num_simultaneous_tokens=8, variational=variational, num_imgs=num_imgs)
-    listener = Listener(feature_len, num_imgs + num_distractors + 1, num_distractors + 1, num_layers=2)
+    listener = Listener(feature_len)
     decoder = Decoder(c_dim, feature_len, num_layers=3, num_imgs=num_imgs)
     model = Team(speaker, listener, decoder)
     model.to(settings.device)
@@ -250,19 +261,14 @@ if __name__ == '__main__':
     num_burnin = 500
     b_size = 1024
     c_dim = 128
-    # comm_dim = 1000  # For onehot, probably want a big comm dim to have lots of unique tokens.
-    # kl_incr = 0.0001  # For continuous communication
-    # kl_incr = 0.00005  # For VQ-VIB 0.00001 is good but slow.
-    settings.kl_incr = 0.0
     variational = True
     # Measuring complexity takes a lot of time. For debugging other features, set to false.
     do_calc_complexity = False
     do_plot_comms = False
-    settings.alpha = 1  # For cont
-    # settings.alpha = 10
-    settings.kl_weight = 0.00001  # For cont
-    # settings.kl_weight = 0.01  # For onehot, to prevent nan in trainng.
-    # settings.kl_weight = 0.0002
+    settings.alpha = 0
+    # settings.kl_weight = 0.00001  # For cont
+    settings.kl_weight = 0.0  # For cont
+    settings.kl_incr = 0.0
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.learned_marginal = False
     with_bbox = False
