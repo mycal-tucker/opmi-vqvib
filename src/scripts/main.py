@@ -73,7 +73,7 @@ def plot_comms(model, dataset, basepath):
     plot_naming(regrouped_data, viz_method='tsne', labels=plot_labels, savepath=basepath + 'training_tsne')
 
 
-def get_embedding_alignment(model, dataset):
+def get_embedding_alignment(model, dataset, glove_data):
     num_tests = 1
     comms = []
     embeddings = []
@@ -139,11 +139,12 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
           val_period=200, plot_comms_flag=False, calculate_complexity=False):
     train_features = train_data['features']
     val_features = val_data['features']
+    glove_data = get_glove_vectors(comm_dim)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
     running_acc = 0
     running_mse = 0
-    num_cand_to_metrics = {2: [], 4: [], 8: []}
+    num_cand_to_metrics = {2: [], 8: [], 16: [], 32: []}
     for empty_list in num_cand_to_metrics.values():
         empty_list.extend([PerformanceMetrics(), PerformanceMetrics()])  # Train metrics, validation metrics
     for epoch in range(num_epochs):
@@ -192,32 +193,35 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
             else:
                 train_complexity = None
                 val_complexity = None
+            # And compare to english word embeddings (doesn't depend on number of distractors)
+            word_embed_r2, pairwise_r2 = get_embedding_alignment(model, viz_data, glove_data)
             complexities = [train_complexity, val_complexity]
             eval_batch_size = 256
             for feature_idx, features in enumerate([train_features, val_features]):
                 for num_candidates in num_cand_to_metrics.keys():
                     acc, recons = evaluate(model, features, eval_batch_size, vae, num_dist=num_candidates - 1)
                     relevant_metrics = num_cand_to_metrics.get(num_candidates)[feature_idx]
-                    relevant_metrics.add_data(epoch, complexities[feature_idx], -1 * recons, acc, settings.kl_weight)
+                    relevant_metrics.add_data(epoch, complexities[feature_idx], -1 * recons, acc, settings.kl_weight, word_embed_r2, pairwise_r2)
             # Plot some of the metrics for online visualization
             comm_accs = []
+            regressions = []
             labels = []
             epoch_idxs = None
             for feature_idx, label in enumerate(['train', 'val']):
                 for num_candidates in sorted(num_cand_to_metrics.keys()):
                     comm_accs.append(num_cand_to_metrics.get(num_candidates)[feature_idx].comm_accs)
+                    regressions.append(num_cand_to_metrics.get(num_candidates)[feature_idx].embed_r2)
                     labels.append(" ".join([label, str(num_candidates), "utility"]))
                     if epoch_idxs is None:
                         epoch_idxs = num_cand_to_metrics.get(num_candidates)[feature_idx].epoch_idxs
             plot_metrics(comm_accs, labels, epoch_idxs, basepath=basepath)
+            plot_metrics(regressions, ['r2 score' for _ in regressions], epoch_idxs, basepath=basepath + 'regression_')
             # Visualize some of the communication
             try:
                 if plot_comms_flag:
                     plot_comms(model, viz_data['features'], basepath)
             except AssertionError:
                 print("Can't plot comms for whatever reason (e.g., continuous communication makes categorizing hard)")
-            # And compare to english word embeddings
-            # word_embed_r2, pairwise_r2 = get_embedding_alignment(model, viz_data)
             # Save the model and metrics to files.
             torch.save(model.state_dict(), basepath + 'model.pt')
             for feature_idx, label in enumerate(['train', 'val']):
@@ -278,7 +282,6 @@ if __name__ == '__main__':
                  'animal', 'cow', 'dog', 'cat']
     features_filename = 'data/features.csv' if with_bbox else 'data/features_nobox.csv'
     np.random.seed(0)
-    glove_data = get_glove_vectors(c_dim)
     vae_model = VAE(512, 32)
     vae_model.load_state_dict(torch.load('saved_models/vae0.001.pt'))
     vae_model.to(settings.device)

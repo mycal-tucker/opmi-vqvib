@@ -45,10 +45,12 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, savepath=None):
     plt.show()
 
 
-def plot_multi_metrics(multi_metrics, file_root=''):
+def plot_multi_metrics(multi_metrics, file_root=''):  # TODO: refactor this to be less hardcoded coloring stuff.
     fig, ax = plt.subplots()
-    labels = ['Train 2', 'Train 4', 'Train 8', 'Val 2', 'Val 4', 'Val 8']
-    comm_to_color = {0: 'tab:blue', 1: 'tab:green', 2: 'tab:olive', 3: 'tab:red', 4: 'tab:purple', 5: 'tab:pink'}
+    # labels = ['Train 2', 'Train 4', 'Train 8', 'Val 2', 'Val 4', 'Val 8']
+    # comm_to_color = {0: 'tab:blue', 1: 'tab:green', 2: 'tab:olive', 3: 'tab:red', 4: 'tab:purple', 5: 'tab:pink'}
+    labels = ['Train 2', 'Train 8', 'Train 16', 'Train 32', 'Val 2', 'Val 8', 'Val 16', 'Val 32']
+    comm_to_color = {0: 'xkcd:pink', 1: 'xkcd:orangered', 2: 'xkcd:red', 3: 'xkcd:purple', 4: 'xkcd:cyan', 5: 'xkcd:aqua', 6: 'xkcd:lightblue', 7: 'xkcd:azure'}
     for comm_type, metrics in multi_metrics.items():
         # color = comm_to_color.get(comm_type)
         num_metrics = len(metrics) - 1  # Last one is just epoch
@@ -68,7 +70,7 @@ def plot_multi_metrics(multi_metrics, file_root=''):
     plt.legend()
     plt.xlabel('Training epoch')
     plt.ylabel('Communicative accuracy (%)')
-    plt.ylim(0.48, 1.02)
+    # plt.ylim(0.48, 1.02)
     if file_root is not None:
         plt.title(file_root)
     plt.tight_layout()

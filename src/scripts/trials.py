@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
     train_fraction = 0.5
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    settings.kl_weight = 0.0  # For cont
+    settings.kl_weight = 0.01  # For cont
     settings.kl_incr = 0.0
     settings.num_distractors = num_distractors
     settings.learned_marginal = False
@@ -61,22 +61,21 @@ if __name__ == '__main__':
     vae.load_state_dict(torch.load('saved_models/vae0.001.pt'))
     vae.to(settings.device)
 
-    num_tokens = 8
     # num_unique_messages = 3 ** 8
     # num_prototypes = int(num_unique_messages ** (1 / num_tokens))
     num_prototypes = 32
 
-    seeds = [i for i in range(1)]
+    seeds = [i for i in range(0, 1)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
-    for num_tokens in [8, 4, 2, 1]:
-        for alpha in [10, 0]:
+    for num_tokens in [2, 4, 8]:
+        for alpha in [0, 10]:
             settings.alpha = alpha
             for seed in seeds:
                 for speaker_type in comm_types:
-                    print("Training comm type", speaker_type, "seed", seed)
+                    print("Training comm type", speaker_type, "seed", seed, "for", num_tokens, "num tokens and", alpha, "alpha")
                     random.seed(seed)
                     np.random.seed(seed)
                     torch.manual_seed(seed)
-                    savepath = 'saved_models/alpha' + str(settings.alpha) + '_' + str(num_tokens) + 'tok/' + speaker_type + '/seed' + str(seed) + '/'
+                    savepath = 'saved_models/beta' + str(settings.kl_weight) + '/alpha' + str(settings.alpha) + '_' + str(num_tokens) + 'tok/' + speaker_type + '/seed' + str(seed) + '/'
                     run_trial()
