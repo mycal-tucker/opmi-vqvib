@@ -13,3 +13,9 @@ class Team(nn.Module):
         recons = self.decoder(comm)
         prediction = self.listener(recons, listener_x)
         return prediction, speaker_loss, info, recons
+
+    # Helper method for going from communication to a listener's prediction
+    def pred_from_comms(self, comm, listener_x):
+        recons = self.decoder(comm)
+        prediction = self.listener(recons, listener_x)
+        return prediction

@@ -29,6 +29,8 @@ def run_trial():
     train_data = get_feature_data(features_filename, selected_fraction=train_fraction)
     train_topnames, train_responses = get_unique_labels(train_data)
     val_data = get_feature_data(features_filename, excluded_names=train_responses)
+    if len(train_data) < 1000 or len(val_data) < 1000:
+        return
     # viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
     viz_data = val_data  # Turn off viz data because we don't use it during trials.
     train(model, train_data, val_data, viz_data, vae=vae, savepath=savepath, comm_dim=comm_dim, num_epochs=num_epochs,
@@ -40,14 +42,14 @@ if __name__ == '__main__':
     feature_len = 512
     settings.see_distractor = False
     num_distractors = 1
-    num_epochs = 1000  # 1000 is way too short, but it's quick for debugging.
+    num_epochs = 5000  # 1000 is way too short, but it's quick for debugging.
     num_burnin = 500
     val_period = 500  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 128
     features_filename = 'data/features_nobox.csv'
 
-    train_fraction = 0.5
+    train_fraction = 0.2
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.kl_weight = 0.01  # For cont
     settings.kl_incr = 0.0
@@ -63,13 +65,14 @@ if __name__ == '__main__':
 
     # num_unique_messages = 3 ** 8
     # num_prototypes = int(num_unique_messages ** (1 / num_tokens))
-    num_prototypes = 32
+    # num_prototypes = 32
+    num_prototypes = 256
 
-    seeds = [i for i in range(0, 1)]
+    seeds = [i for i in range(0, 5)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
-    for num_tokens in [2, 4, 8]:
-        for alpha in [0, 10]:
+    for num_tokens in [1, 2, 8]:
+        for alpha in [10]:
             settings.alpha = alpha
             for seed in seeds:
                 for speaker_type in comm_types:

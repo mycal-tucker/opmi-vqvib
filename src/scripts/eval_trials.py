@@ -7,6 +7,7 @@ def gen_plots(basepath):
     all_complexities = []
     all_informativeness = []
     all_accs = {}  # model type to two lists: train and val accs, as a list for each epoch
+    eng_accs = {}
     full_paths = []
     for base in ['train', 'val']:
         for num_candidates in candidates:
@@ -36,6 +37,12 @@ def gen_plots(basepath):
         speaker_accs = [[metric.comm_accs for metric in eval_type] for eval_type in speaker_metrics]
         speaker_accs.append(epochs)  # Need to track this too
         all_accs[speaker_type] = speaker_accs
+        top_eng_accs = [[metric.top_eng_acc for metric in eval_type] for eval_type in speaker_metrics]
+        syn_eng_accs = [[metric.syn_eng_acc for metric in eval_type] for eval_type in speaker_metrics]
+        top_eng_accs.append(epochs)
+        syn_eng_accs.append(epochs)
+        eng_accs['top'] = top_eng_accs
+        eng_accs['syn'] = syn_eng_accs
     # Add English data, gathered from english_analysis.py
     all_complexities.append([1.54])
     all_informativeness.append([-0.00011])
@@ -44,13 +51,14 @@ def gen_plots(basepath):
                       ['Cont.', 'VQ-VIB', 'English'],
                       sizes)
     plot_multi_metrics(all_accs, file_root=basepath)
+    plot_multi_metrics(eng_accs, file_root=basepath + 'eng_')
 
 
 def run():
-    base = 'saved_models/beta0.001'
+    base = 'saved_models/beta0.01'
     for alpha in [10]:
         # for num_tok in [1, 2, 4, 8]:
-        for num_tok in [8]:
+        for num_tok in [1, 2, 8]:
             setup = 'alpha' + str(alpha) + '_' + str(num_tok) + 'tok'
             basepath = base + '/' + setup + '/'
             gen_plots(basepath)
@@ -58,7 +66,7 @@ def run():
 
 if __name__ == '__main__':
     # candidates = [2, 4, 8]
-    candidates = [2, 8, 16, 32]
+    candidates = [2, 8, 16]
     # model_types = ['cont', 'vq']
     model_types = ['vq']
     seeds = [0, 1, 2, 3, 4]

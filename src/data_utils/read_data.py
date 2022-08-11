@@ -172,9 +172,12 @@ def get_feature_data(filename, desired_names=[], excluded_names=[], selected_fra
     merged_df.reset_index(inplace=True)
     # Count the number of unique words used to describe items in the dataset
     unique_responses = set()
-    for response in merged_df['responses']:
+    unique_topwords = set()
+    for topword, response in zip(merged_df['topname'], merged_df['responses']):
+        unique_topwords.add(topword)
         for word in response.keys():
             unique_responses.add(word)
+    print("Num unique topwords:\t", len(unique_topwords))
     print("Num unique response words:\t", len(unique_responses))
     print("Overall dataset size:\t", len(merged_df))
     return merged_df

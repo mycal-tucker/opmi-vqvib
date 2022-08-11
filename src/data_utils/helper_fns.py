@@ -3,7 +3,7 @@ import src.settings as settings
 import torch
 
 
-def gen_batch(all_features, batch_size, vae=None, see_distractors=False, num_dist=None):
+def gen_batch(all_features, batch_size, vae=None, see_distractors=False, num_dist=None, preset_targ_idx=None):
     # Given the dataset of all features, creates a batch of inputs.
     # That's:
     # 1) The speaker's observation
@@ -16,7 +16,7 @@ def gen_batch(all_features, batch_size, vae=None, see_distractors=False, num_dis
     if num_dist is None:
         num_dist = settings.num_distractors
     for _ in range(batch_size):
-        targ_idx = int(np.random.random() * len(all_features))
+        targ_idx = int(np.random.random() * len(all_features)) if preset_targ_idx is None else preset_targ_idx
         targ_features = all_features[targ_idx]
         distractor_features = [all_features[int(np.random.random() * len(all_features))] for _ in range(num_dist)]
         obs_targ_idx = int(np.random.random() * (num_dist + 1))  # Pick where to slide the target observation into.
@@ -92,4 +92,4 @@ def get_glove_embedding(dataset, word):
         return embed
     except KeyError:
         print("Couldn't find word", word)
-        return np.zeros(100)
+        return None
