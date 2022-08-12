@@ -37,12 +37,11 @@ def gen_plots(basepath):
         speaker_accs = [[metric.comm_accs for metric in eval_type] for eval_type in speaker_metrics]
         speaker_accs.append(epochs)  # Need to track this too
         all_accs[speaker_type] = speaker_accs
-        top_eng_accs = [[metric.top_eng_acc for metric in eval_type] for eval_type in speaker_metrics]
-        syn_eng_accs = [[metric.syn_eng_acc for metric in eval_type] for eval_type in speaker_metrics]
-        top_eng_accs.append(epochs)
-        syn_eng_accs.append(epochs)
-        eng_accs['top'] = top_eng_accs
-        eng_accs['syn'] = syn_eng_accs
+        top_eng_accs = [metric.top_eng_acc for metric in speaker_metrics[0]]
+        syn_eng_accs = [metric.syn_eng_acc for metric in speaker_metrics[0]]
+        top_val_eng_accs = [metric.top_val_eng_acc for metric in speaker_metrics[0]]
+        syn_val_eng_accs = [metric.syn_val_eng_acc for metric in speaker_metrics[0]]
+        eng_accs['vq'] = [top_eng_accs, syn_eng_accs, top_val_eng_accs, syn_val_eng_accs, epochs]
     # Add English data, gathered from english_analysis.py
     all_complexities.append([1.54])
     all_informativeness.append([-0.00011])
@@ -50,15 +49,15 @@ def gen_plots(basepath):
     plot_multi_trials([all_complexities, all_informativeness],
                       ['Cont.', 'VQ-VIB', 'English'],
                       sizes)
-    plot_multi_metrics(all_accs, file_root=basepath)
-    plot_multi_metrics(eng_accs, file_root=basepath + 'eng_')
+    plot_multi_metrics(all_accs, labels=['Train 2', 'Train 8', 'Train 16', 'Val 2', 'Val 8', 'Val 16'], file_root=basepath)
+    plot_multi_metrics(eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'eng_')
 
 
 def run():
     base = 'saved_models/beta0.01'
     for alpha in [10]:
         # for num_tok in [1, 2, 4, 8]:
-        for num_tok in [1, 2, 8]:
+        for num_tok in [1]:
             setup = 'alpha' + str(alpha) + '_' + str(num_tok) + 'tok'
             basepath = base + '/' + setup + '/'
             gen_plots(basepath)
@@ -69,7 +68,7 @@ if __name__ == '__main__':
     candidates = [2, 8, 16]
     # model_types = ['cont', 'vq']
     model_types = ['vq']
-    seeds = [0, 1, 2, 3, 4]
+    seeds = [1, 2]
     # seeds = [0]
     burnins = [0, 0, 0, 0, 0]
     run()

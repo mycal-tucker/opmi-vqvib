@@ -8,13 +8,19 @@ from src.models.network_utils import reparameterize
 
 
 class VQLayer(nn.Module):
-    def __init__(self, num_protos, latent_dim, beta=0.25):
+    def __init__(self, num_protos, latent_dim, init_vectors=None, beta=0.25):
         super(VQLayer, self).__init__()
         self.num_protos = num_protos
         self.latent_dim = latent_dim
+        self.trainable_quantizers = init_vectors is None
         self.beta = beta
         self.prototypes = nn.Parameter(data=torch.Tensor(num_protos, latent_dim))
-        self.prototypes.data.uniform_(-1 / self.num_protos, 1 / self.num_protos)
+        if init_vectors is not None:
+            print("Manually specifying non-trainable vector quantization.")
+            self.prototypes.data = torch.from_numpy(init_vectors).type(torch.FloatTensor)
+            self.prototypes.requires_grad = not settings.hardcoded_vq
+        else:
+            self.prototypes.data.uniform_(-1 / self.num_protos, 1 / self.num_protos)
 
     def forward(self, latents):
         dists_to_protos = torch.sum(latents ** 2, dim=1, keepdim=True) + \
@@ -55,12 +61,14 @@ class VQLayer(nn.Module):
 
 
 class VQ(nn.Module):
-    def __init__(self, input_dim, output_dim, num_layers, num_protos, num_simultaneous_tokens=1, variational=False, num_imgs=1):
+    def __init__(self, input_dim, output_dim, num_layers, num_protos, specified_tok=None, num_simultaneous_tokens=1, variational=True, num_imgs=1):
         super(VQ, self).__init__()
         self.input_dim = input_dim
         self.comm_dim = output_dim
         self.proto_latent_dim = int(self.comm_dim / num_simultaneous_tokens)
         self.hidden_dim = 64
+        if specified_tok is not None:
+            num_protos = specified_tok.shape[0]
         self.num_tokens = num_protos  # Need this general variable for num tokens
         self.num_simultaneous_tokens = num_simultaneous_tokens
         self.variational = variational
@@ -73,7 +81,7 @@ class VQ(nn.Module):
             self.layers.append(nn.Linear(in_dim, out_dim))
             in_dim = out_dim
             out_dim = self.hidden_dim if len(self.layers) < num_layers - 1 else self.comm_dim
-        self.vq_layer = VQLayer(num_protos, self.proto_latent_dim)
+        self.vq_layer = VQLayer(num_protos, self.proto_latent_dim, init_vectors=specified_tok)
         self.fc_mu = nn.Linear(self.proto_latent_dim, self.proto_latent_dim)
         if variational:
             self.fc_var = nn.Linear(self.proto_latent_dim, self.proto_latent_dim)

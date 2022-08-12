@@ -3,20 +3,31 @@ import src.settings as settings
 import torch
 
 
-def gen_batch(all_features, batch_size, vae=None, see_distractors=False, num_dist=None, preset_targ_idx=None):
-    # Given the dataset of all features, creates a batch of inputs.
+def gen_batch(all_data, batch_size, vae=None, glove_data=None, see_distractors=False, num_dist=None, preset_targ_idx=None):
+    # Given the dataset, creates a batch of inputs.
     # That's:
     # 1) The speaker's observation
     # 2) The listener's observation
     # 3) The label (which is the index of the speaker's observation).
+    # 4) Word embeddings for the target, if glove_data is not None
     speaker_obs = []
     listener_obs = []
     labels = []
+    embeddings = []
 
+    all_features = all_data['features']
+    all_words = all_data['topname']
     if num_dist is None:
         num_dist = settings.num_distractors
     for _ in range(batch_size):
         targ_idx = int(np.random.random() * len(all_features)) if preset_targ_idx is None else preset_targ_idx
+        # Get the word embedding
+        if glove_data is not None:
+            word = all_words[targ_idx]
+            emb = get_glove_embedding(glove_data, word)
+            if emb is not None:
+                emb = emb.to_numpy()
+            embeddings.append(emb)
         targ_features = all_features[targ_idx]
         distractor_features = [all_features[int(np.random.random() * len(all_features))] for _ in range(num_dist)]
         obs_targ_idx = int(np.random.random() * (num_dist + 1))  # Pick where to slide the target observation into.
@@ -32,7 +43,7 @@ def gen_batch(all_features, batch_size, vae=None, see_distractors=False, num_dis
             speaker_tensor, _ = vae(speaker_tensor)
             listener_tensor, _ = vae(listener_tensor)
     label_tensor = torch.Tensor(labels).long().to(settings.device)
-    return speaker_tensor, listener_tensor, label_tensor
+    return speaker_tensor, listener_tensor, label_tensor, embeddings
 
 
 def get_unique_labels(dataset):
@@ -91,5 +102,16 @@ def get_glove_embedding(dataset, word):
         settings.embedding_cache[word] = embed
         return embed
     except KeyError:
-        print("Couldn't find word", word)
+        # print("Couldn't find word", word)
         return None
+
+
+def get_all_embeddings(glove_dataset, words):
+    all_embeddings = []
+    for word in words:
+        emb = get_glove_embedding(glove_dataset, word)
+        if emb is None:
+            continue
+        all_embeddings.append(emb.to_numpy())
+    stacked_embeddings = np.vstack(all_embeddings)
+    return stacked_embeddings

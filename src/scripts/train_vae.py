@@ -10,11 +10,11 @@ from src.models.vae import VAE
 def run():
     model = VAE(512, 32)
     model.to(settings.device)
-    train_data = get_feature_data(features_filename)['features']
+    train_data = get_feature_data(features_filename)
     optimizer = optim.Adam(model.parameters())
     for epoch in range(num_epochs):
         print("Epoch", epoch, "of", num_epochs)
-        features, _, _ = gen_batch(train_data, batch_size)
+        features, _, _, _ = gen_batch(train_data, batch_size)
         optimizer.zero_grad()
         reconstruction, loss = model(features)
         loss.backward()

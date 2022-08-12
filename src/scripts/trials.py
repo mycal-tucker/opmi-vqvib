@@ -1,6 +1,6 @@
 import src.settings as settings
-from src.data_utils.helper_fns import get_unique_labels
-from src.data_utils.read_data import get_feature_data
+from src.data_utils.helper_fns import get_unique_labels, get_all_embeddings
+from src.data_utils.read_data import get_feature_data, get_glove_vectors
 from src.models.decoder import Decoder
 from src.models.listener import Listener
 from src.models.mlp import MLP
@@ -14,26 +14,34 @@ from src.scripts.main import train
 
 
 def run_trial():
+    # Load data
+    glove_data = get_glove_vectors(comm_dim)
+    train_data = get_feature_data(features_filename, selected_fraction=train_fraction)
+    train_topnames, train_responses = get_unique_labels(train_data)
+    val_data = get_feature_data(features_filename, excluded_names=train_responses)
+    # val_data = train_data  # FIXME
+    if len(train_data) < 1000 or len(val_data) < 1000:
+        return
+    # viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
+    viz_data = val_data  # Turn off viz data because we don't use it during trials.
+
+    all_embeddings = None if not use_embed_tokens else get_all_embeddings(glove_data, train_topnames)
+
+    # Initialize the agents for training
     num_imgs = 1 if not settings.see_distractor else (num_distractors + 1)
     if speaker_type == 'cont':
         speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=False, variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'onehot':
         speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=True, variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'vq':
-        speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, num_simultaneous_tokens=num_tokens, variational=variational, num_imgs=num_imgs)
+        speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, specified_tok=all_embeddings, num_simultaneous_tokens=num_tokens,
+                     variational=variational, num_imgs=num_imgs)
     listener = Listener(feature_len)
     decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=num_imgs)
     model = Team(speaker, listener, decoder)
     model.to(settings.device)
 
-    train_data = get_feature_data(features_filename, selected_fraction=train_fraction)
-    train_topnames, train_responses = get_unique_labels(train_data)
-    val_data = get_feature_data(features_filename, excluded_names=train_responses)
-    if len(train_data) < 1000 or len(val_data) < 1000:
-        return
-    # viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
-    viz_data = val_data  # Turn off viz data because we don't use it during trials.
-    train(model, train_data, val_data, viz_data, vae=vae, savepath=savepath, comm_dim=comm_dim, num_epochs=num_epochs,
+    train(model, train_data, val_data, viz_data, glove_data, vae=vae, savepath=savepath, comm_dim=comm_dim, num_epochs=num_epochs,
           batch_size=batch_size, burnin_epochs=num_burnin, val_period=val_period,
           plot_comms_flag=False, calculate_complexity=False)
 
@@ -46,7 +54,7 @@ if __name__ == '__main__':
     num_burnin = 500
     val_period = 500  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
-    comm_dim = 128
+    comm_dim = 64
     features_filename = 'data/features_nobox.csv'
 
     train_fraction = 0.2
@@ -58,6 +66,12 @@ if __name__ == '__main__':
     settings.embedding_cache = {}
     settings.sample_first = True
     variational = True
+    settings.supervision_weight = 1
+    settings.hardcoded_vq = False
+
+    use_embed_tokens = False
+    if use_embed_tokens:
+        assert comm_dim <= 100, "Can't use 100D glove embeddings in greater than 100 comm dim"
 
     vae = VAE(512, 32)
     vae.load_state_dict(torch.load('saved_models/vae0.001.pt'))
@@ -68,10 +82,10 @@ if __name__ == '__main__':
     # num_prototypes = 32
     num_prototypes = 256
 
-    seeds = [i for i in range(0, 5)]
+    seeds = [i for i in range(1, 3)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
-    for num_tokens in [1, 2, 8]:
+    for num_tokens in [1]:
         for alpha in [10]:
             settings.alpha = alpha
             for seed in seeds:

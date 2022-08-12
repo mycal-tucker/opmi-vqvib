@@ -32,7 +32,7 @@ def get_info(model, dataset, targ_dim, comm_targ=False, batch_size=1024):
     optimizer = optim.Adam(mine_net.parameters())
     num_epochs = 200
     for epoch in range(num_epochs):
-        speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size)
+        speaker_obs, listener_obs, labels, _ = gen_batch(dataset, batch_size)
         with torch.no_grad():
             if comm_targ:
                 targ_var, _, _ = model.speaker(speaker_obs)  # Communication
@@ -52,7 +52,7 @@ def get_info(model, dataset, targ_dim, comm_targ=False, batch_size=1024):
     summed_loss = 0
     num_eval_epochs = 20
     for epoch in range(num_eval_epochs):
-        speaker_obs, listener_obs, labels = gen_batch(dataset, 1024)
+        speaker_obs, listener_obs, labels, _ = gen_batch(dataset, 1024)
         with torch.no_grad():
             if comm_targ:
                 targ_var, _, _ = model.speaker(speaker_obs)  # Communication

@@ -9,7 +9,7 @@ import random
 
 import src.settings as settings
 from src.data_utils.helper_fns import gen_batch, get_glove_embedding, get_unique_labels
-from src.data_utils.read_data import get_feature_data, get_glove_vectors
+from src.data_utils.read_data import get_feature_data
 from src.models.decoder import Decoder
 from src.models.listener import Listener
 from src.models.team import Team
@@ -29,7 +29,7 @@ def evaluate(model, dataset, batch_size, vae, num_dist=None):
     num_total = 0
     for _ in range(num_test_batches):
         with torch.no_grad():
-            speaker_obs, listener_obs, labels = gen_batch(dataset, batch_size, vae=vae, see_distractors=settings.see_distractor, num_dist=num_dist)
+            speaker_obs, listener_obs, labels, _ = gen_batch(dataset, batch_size, vae=vae, see_distractors=settings.see_distractor, num_dist=num_dist)
             outputs, _, _, recons = model(speaker_obs, listener_obs)
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
         num_correct += np.sum(pred_labels == labels.cpu().numpy())
@@ -43,14 +43,13 @@ def evaluate(model, dataset, batch_size, vae, num_dist=None):
 
 
 def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top=True, num_dist=None):
-    features = dataset['features']
     topwords = dataset['topname']
     responses = dataset['responses']
     model.eval()
     num_correct = 0
     num_total = 0
     for targ_idx in range(1000):
-        _, listener_obs, labels = gen_batch(features, 1, vae=vae, see_distractors=settings.see_distractor,
+        _, listener_obs, labels, _ = gen_batch(dataset, 1, vae=vae, see_distractors=settings.see_distractor,
                                             num_dist=num_dist, preset_targ_idx=targ_idx)
         # Can pick just the topname, or one of the random responses.
         topword = topwords[targ_idx]
@@ -71,7 +70,7 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top
         token = embed_to_tok.predict(np.expand_dims(embedding, 0))
         with torch.no_grad():
             tensor_token = torch.Tensor(token).to(settings.device)
-            # Snap the token to the nearest VQ
+            # Snap the token to the nearest VQ?
             reshaped = torch.reshape(tensor_token, (-1, model.speaker.proto_latent_dim))
             quantized, _ = model.speaker.vq_layer(reshaped)
             tensor_token = torch.reshape(quantized, (-1, model.speaker.comm_dim))
@@ -139,10 +138,12 @@ def get_embedding_alignment(model, dataset, glove_data):
     reg1.fit(comms, embeddings)
     tok_to_embed_r2 = reg1.score(comms, embeddings)
     print("Tok to word embedding regression score\t\t", tok_to_embed_r2)
+    reg1.fit(comms, comms)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
     reg2 = LinearRegression()
     reg2.fit(embeddings, comms)
     embed_to_tok_r2 = reg2.score(embeddings, comms)
     print("Word embedding to token regression score\t\t", embed_to_tok_r2)
+    reg2.fit(embeddings, embeddings)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
     return reg1, reg2, tok_to_embed_r2, embed_to_tok_r2
 
 
@@ -152,7 +153,7 @@ def get_probs(speaker, dataset):
     num_samples = 1000
     w_m = np.zeros((num_samples, speaker.num_tokens))
     for i in range(num_samples):
-        speaker_obs, _, _ = gen_batch(dataset, batch_size=1)
+        speaker_obs, _, _, _ = gen_batch(dataset, batch_size=1)
         with torch.no_grad():
             likelihoods = speaker.get_token_dist(speaker_obs)
         w_m[i] = likelihoods
@@ -173,8 +174,6 @@ def get_probs(speaker, dataset):
 
 def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data, num_cand_to_metrics, savepath,
                epoch, calculate_complexity=False, plot_comms_flag=False):
-    train_features = train_data['features']
-    val_features = val_data['features']
     # Create a directory to save information, models, etc.
     basepath = savepath + str(epoch) + '/'
     if not os.path.exists(basepath):
@@ -184,7 +183,7 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
     # get_probs(model.speaker, train_data)
     # Or we can use MINE to estimate complexity and informativeness.
     if calculate_complexity:
-        train_complexity = get_info(model, train_features, targ_dim=comm_dim, comm_targ=True)
+        train_complexity = get_info(model, train_data, targ_dim=comm_dim, comm_targ=True)
         # val_complexity = get_info(model, val_features, targ_dim=comm_dim, comm_targ=True)
         val_complexity = None
         print("Train complexity", train_complexity)
@@ -200,23 +199,28 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
         eng_train_top_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data, use_top=True,
                                                     num_dist=num_candidates - 1)
         print("English topname train accuracy", eng_train_top_score)
-        eng_train_gen_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data, use_top=False,
+        eng_train_syn_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data, use_top=False,
                                                     num_dist=num_candidates - 1)
-        print("English synonym train accuracy", eng_train_gen_score)
-        english_val_score = evaluate_with_english(model, val_data, vae, embed_to_tok, glove_data,
+        print("English synonym train accuracy", eng_train_syn_score)
+        eng_val_top_score = evaluate_with_english(model, val_data, vae, embed_to_tok, glove_data, use_top=True,
                                                   num_dist=num_candidates - 1)
-        print("English val accuracy", english_val_score)
+        print("English topname val accuracy", eng_val_top_score)
+        eng_val_syn_score = evaluate_with_english(model, val_data, vae, embed_to_tok, glove_data, use_top=False,
+                                                  num_dist=num_candidates - 1)
+        print("English synonym val accuracy", eng_val_syn_score)
     complexities = [train_complexity, val_complexity]
-    for feature_idx, features in enumerate([train_features, val_features]):
+    for feature_idx, data in enumerate([train_data, val_data]):
         for num_candidates in num_cand_to_metrics.keys():
-            acc, recons = evaluate(model, features, eval_batch_size, vae, num_dist=num_candidates - 1)
+            acc, recons = evaluate(model, data, eval_batch_size, vae, num_dist=num_candidates - 1)
             relevant_metrics = num_cand_to_metrics.get(num_candidates)[feature_idx]
             relevant_metrics.add_data(epoch, complexities[feature_idx], -1 * recons, acc, settings.kl_weight,
-                                      tokr2, embr2, eng_train_top_score, eng_train_gen_score)
+                                      tokr2, embr2, eng_train_top_score, eng_train_syn_score, eng_val_top_score, eng_val_syn_score)
     # Plot some of the metrics for online visualization
     comm_accs = []
     top_eng_scores = []
     syn_eng_scores = []
+    top_val_eng_scores = []
+    syn_val_eng_scores = []
     regressions = []
     labels = []
     epoch_idxs = None
@@ -225,6 +229,8 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
             comm_accs.append(num_cand_to_metrics.get(num_candidates)[feature_idx].comm_accs)
             top_eng_scores.append(num_cand_to_metrics.get(num_candidates)[feature_idx].top_eng_acc)
             syn_eng_scores.append(num_cand_to_metrics.get(num_candidates)[feature_idx].syn_eng_acc)
+            top_val_eng_scores.append(num_cand_to_metrics.get(num_candidates)[feature_idx].top_val_eng_acc)
+            syn_val_eng_scores.append(num_cand_to_metrics.get(num_candidates)[feature_idx].syn_val_eng_acc)
             regressions.append(num_cand_to_metrics.get(num_candidates)[feature_idx].embed_r2)
             labels.append(" ".join([label, str(num_candidates), "utility"]))
             if epoch_idxs is None:
@@ -233,6 +239,8 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
     plot_metrics(regressions, ['r2 score'], epoch_idxs, basepath=basepath + 'regression_')
     plot_metrics(top_eng_scores, ['top eng score'], epoch_idxs, basepath=basepath + 'top_eng_')
     plot_metrics(syn_eng_scores, ['syn eng score'], epoch_idxs, basepath=basepath + 'syn_eng_')
+    plot_metrics(top_val_eng_scores, ['top val eng score'], epoch_idxs, basepath=basepath + 'top_val_eng_')
+    plot_metrics(syn_val_eng_scores, ['syn val eng score'], epoch_idxs, basepath=basepath + 'syn_val_eng_')
     # Visualize some of the communication
     try:
         if plot_comms_flag:
@@ -247,10 +255,31 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
             metric.to_file(basepath + "_".join([label, str(num_candidates), "metrics"]))
 
 
-def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_epochs=3000, batch_size=1024, burnin_epochs=500,
-          val_period=200, plot_comms_flag=False, calculate_complexity=False):
-    train_features = train_data['features']
-    glove_data = get_glove_vectors(comm_dim)
+def get_supervised_data(train_data, num_examples, glove_data, vae):
+    speaker_obs = []
+    embs = []
+    while len(embs) < num_examples:
+        obs, _, _, emb = gen_batch(train_data, 1, glove_data=glove_data, vae=vae)
+        if emb[0] is not None:  # It's a list
+            embs.append(emb)
+            speaker_obs.append(obs.cpu())  # Put on the cpu to get into numpy for moving. Awkward, I know, but whatever.
+    speaker_obs = torch.Tensor(np.vstack(speaker_obs)).to(settings.device)
+    embs = torch.Tensor(np.vstack(embs)).to(settings.device)
+    return [speaker_obs, embs]  # FIXME: would be better to return indices rather than data, but that's so much slower
+
+
+def get_super_loss(supervised_data, speaker):
+    supervision_crit = nn.MSELoss()
+    comms, _, _ = speaker(supervised_data[0])
+    supervised_loss = supervision_crit(comms, supervised_data[1])
+    print("Supervised loss", supervised_loss)
+    return supervised_loss
+
+
+def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm_dim, num_epochs=3000, batch_size=1024,
+          burnin_epochs=500, val_period=200, plot_comms_flag=False, calculate_complexity=False):
+    supervised_data = get_supervised_data(train_data, 128, glove_data, vae)
+
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
     running_acc = 0
@@ -262,18 +291,21 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
         if epoch > burnin_epochs:
             settings.kl_weight += settings.kl_incr
         print('epoch', epoch, 'of', num_epochs)
-        print("Kl weight", settings.kl_weight)
-        speaker_obs, listener_obs, labels = gen_batch(train_features, batch_size, vae=vae, see_distractors=settings.see_distractor)
+        # print("Kl weight", settings.kl_weight)
+        speaker_obs, listener_obs, labels, embs = gen_batch(train_data, batch_size, vae=vae, see_distractors=settings.see_distractor)
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
+
         loss = criterion(outputs, labels)
+        supervised_loss = get_super_loss(supervised_data, model.speaker)
+        loss = loss + settings.supervision_weight * supervised_loss
         if len(speaker_obs.shape) == 2:
             speaker_obs = torch.unsqueeze(speaker_obs, 1)
         recons_loss = torch.mean(((speaker_obs - recons) ** 2))
         loss += settings.alpha * recons_loss
         loss += speaker_loss
-        print("Speaker loss fraction:\t", speaker_loss.item() / loss.item())
-        print("Recons loss fraction:\t", settings.alpha * recons_loss.item() / loss.item())
+        # print("Speaker loss fraction:\t", speaker_loss.item() / loss.item())
+        # print("Recons loss fraction:\t", settings.alpha * recons_loss.item() / loss.item())
         loss.backward()
         optimizer.step()
 
@@ -289,6 +321,7 @@ def train(model, train_data, val_data, viz_data, vae, savepath, comm_dim, num_ep
         if epoch % val_period == val_period - 1:
             eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data, num_cand_to_metrics,
                        savepath, epoch, calculate_complexity=calculate_complexity, plot_comms_flag=plot_comms_flag)
+
 
 def run():
     num_imgs = 1 if not settings.see_distractor else (num_distractors + 1)
