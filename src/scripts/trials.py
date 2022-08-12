@@ -43,7 +43,7 @@ def run_trial():
 
     train(model, train_data, val_data, viz_data, glove_data, vae=vae, savepath=savepath, comm_dim=comm_dim, num_epochs=num_epochs,
           batch_size=batch_size, burnin_epochs=num_burnin, val_period=val_period,
-          plot_comms_flag=False, calculate_complexity=False)
+          plot_comms_flag=False, calculate_complexity=True)
 
 
 if __name__ == '__main__':
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     settings.see_distractor = False
     num_distractors = 1
     num_epochs = 5000  # 1000 is way too short, but it's quick for debugging.
-    num_burnin = 500
+    num_burnin = 2000
     val_period = 500  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 64
@@ -59,14 +59,15 @@ if __name__ == '__main__':
 
     train_fraction = 0.2
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    settings.kl_weight = 0.01  # For cont
-    settings.kl_incr = 0.0
+    # settings.kl_weight = 0.001  # For cont
+    settings.kl_weight = 0.0002  # For VQ
+    settings.kl_incr = 0.00001
     settings.num_distractors = num_distractors
     settings.learned_marginal = False
     settings.embedding_cache = {}
     settings.sample_first = True
     variational = True
-    settings.supervision_weight = 1
+    settings.supervision_weight = 0
     settings.hardcoded_vq = False
 
     use_embed_tokens = False
@@ -74,7 +75,8 @@ if __name__ == '__main__':
         assert comm_dim <= 100, "Can't use 100D glove embeddings in greater than 100 comm dim"
 
     vae = VAE(512, 32)
-    vae.load_state_dict(torch.load('saved_models/vae0.001.pt'))
+    vae_beta = 0.001
+    vae.load_state_dict(torch.load('saved_models/vae' + str(vae_beta) +'.pt'))
     vae.to(settings.device)
 
     # num_unique_messages = 3 ** 8
@@ -82,7 +84,7 @@ if __name__ == '__main__':
     # num_prototypes = 32
     num_prototypes = 256
 
-    seeds = [i for i in range(1, 3)]
+    seeds = [i for i in range(1, 2)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
     for num_tokens in [1]:
@@ -94,5 +96,5 @@ if __name__ == '__main__':
                     random.seed(seed)
                     np.random.seed(seed)
                     torch.manual_seed(seed)
-                    savepath = 'saved_models/beta' + str(settings.kl_weight) + '/alpha' + str(settings.alpha) + '_' + str(num_tokens) + 'tok/' + speaker_type + '/seed' + str(seed) + '/'
+                    savepath = 'saved_models/beta' + str(vae_beta) + '/alpha' + str(settings.alpha) + '_' + str(num_tokens) + 'tok/' + speaker_type + '/seed' + str(seed) + '/'
                     run_trial()

@@ -26,6 +26,7 @@ def plot_scatter(metrics, labels, savepath=None):
     pcm = ax.scatter(metrics[0], metrics[1], c=c, s=20, cmap='viridis')
     plt.xlabel(labels[0])
     plt.ylabel(labels[1])
+    plt.tight_layout()
     if savepath is not None:
         plt.savefig(savepath)
         plt.savefig('info_plane.png')
@@ -34,7 +35,7 @@ def plot_scatter(metrics, labels, savepath=None):
     plt.close()
 
 
-def plot_multi_trials(multi_metrics, series_labels, sizes, savepath=None):
+def plot_multi_trials(multi_metrics, series_labels, sizes, file_root=None):
     fig, ax = plt.subplots()
     for metric_x, metric_y, label, s in zip(multi_metrics[0], multi_metrics[1], series_labels, sizes):
         pcm = ax.scatter(metric_x, metric_y, s=s, label=label)
@@ -42,6 +43,8 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, savepath=None):
     plt.ylabel('Negative MSE')
     plt.legend()
     plt.tight_layout()
+    if file_root is not None:
+        plt.savefig(file_root + 'info_plane_scatter.png')
     plt.show()
 
 

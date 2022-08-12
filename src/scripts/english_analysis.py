@@ -18,7 +18,8 @@ def train(data, model):
         features, embeddings = get_embedding_batch(data, glove_data, batch_size, vae)
         optimizer.zero_grad()
         recons = model(embeddings)
-        loss = torch.mean(((features - recons) ** 2)) / batch_size
+        recons = torch.squeeze(recons, dim=1)
+        loss = torch.mean(((features - recons) ** 2))
         loss.backward()
         optimizer.step()
         running_mse = 0.95 * running_mse + 0.05 * loss.item()
@@ -31,7 +32,8 @@ def train(data, model):
         features, embeddings = get_embedding_batch(data, glove_data, batch_size, vae)
         with torch.no_grad():
             recons = model(embeddings)
-            loss = torch.mean(((features - recons) ** 2)) / batch_size
+            recons = torch.squeeze(recons, dim=1)
+            loss = torch.mean(((features - recons) ** 2))
             total_loss += loss.item()
     print(total_loss / num_eval_epochs)
 
@@ -78,12 +80,12 @@ if __name__ == '__main__':
     features_filename = 'data/features_nobox.csv'
     comm_dim = 100  # Align with glove embedding size
     num_epochs = 500
-    batch_size = 1024
+    batch_size = 256
     # settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.device = 'cpu'
     glove_data = get_glove_vectors(comm_dim)
     settings.embedding_cache = {}
     vae = VAE(512, 32)
-    vae.load_state_dict(torch.load('saved_models/vae.pt'))
+    vae.load_state_dict(torch.load('saved_models/vae0.001.pt'))
     vae.to(settings.device)
     run()

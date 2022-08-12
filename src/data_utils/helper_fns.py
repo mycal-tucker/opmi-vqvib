@@ -63,8 +63,6 @@ def get_embedding_batch(all_data, embed_data, batch_size, vae=None):
     embeddings = []
     while len(features) < batch_size:
         targ_idx = int(np.random.random() * len(all_features))
-        # Get the features
-        features.append(all_features[targ_idx])
         # Get the embedding for the word
         responses = all_data['responses'][targ_idx]
         words = []
@@ -72,7 +70,7 @@ def get_embedding_batch(all_data, embed_data, batch_size, vae=None):
         for k, v in responses.items():
             parsed_word = k.split(' ')
             if len(parsed_word) > 1:
-                # Skip "words" like "tennis player" etc. because
+                # Skip "words" like "tennis player" etc. because they won't be in glove data
                 continue
             words.append(k)
             probs.append(v)
@@ -84,6 +82,10 @@ def get_embedding_batch(all_data, embed_data, batch_size, vae=None):
         sampled_word = np.random.choice(words, p=probs)
         # sampled_word = words[np.argmax(probs)]
         embedding = get_glove_embedding(embed_data, sampled_word)
+        if embedding is None:
+            continue
+        # Get the features
+        features.append(all_features[targ_idx])
         embeddings.append(embedding)
     feature_tensor = torch.Tensor(np.vstack(features)).to(settings.device)
     if vae is not None:

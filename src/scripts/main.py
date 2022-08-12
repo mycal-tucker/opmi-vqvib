@@ -31,12 +31,13 @@ def evaluate(model, dataset, batch_size, vae, num_dist=None):
         with torch.no_grad():
             speaker_obs, listener_obs, labels, _ = gen_batch(dataset, batch_size, vae=vae, see_distractors=settings.see_distractor, num_dist=num_dist)
             outputs, _, _, recons = model(speaker_obs, listener_obs)
+            recons = torch.squeeze(recons, dim=1)
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
         num_correct += np.sum(pred_labels == labels.cpu().numpy())
         num_total += pred_labels.size
         total_recons_loss += torch.mean(((speaker_obs - recons) ** 2)).item()
     acc = num_correct / num_total
-    total_recons_loss = total_recons_loss / num_total
+    total_recons_loss = total_recons_loss / num_test_batches
     print("Evaluation accuracy", acc)
     print("Evaluation recons loss", total_recons_loss)
     return acc, total_recons_loss
@@ -291,14 +292,15 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
         if epoch > burnin_epochs:
             settings.kl_weight += settings.kl_incr
         print('epoch', epoch, 'of', num_epochs)
-        # print("Kl weight", settings.kl_weight)
-        speaker_obs, listener_obs, labels, embs = gen_batch(train_data, batch_size, vae=vae, see_distractors=settings.see_distractor)
+        print("Kl weight", settings.kl_weight)
+        speaker_obs, listener_obs, labels, _ = gen_batch(train_data, batch_size, vae=vae, see_distractors=settings.see_distractor)
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
 
         loss = criterion(outputs, labels)
-        supervised_loss = get_super_loss(supervised_data, model.speaker)
-        loss = loss + settings.supervision_weight * supervised_loss
+        if settings.supervision_weight != 0:  # Don't even bother computing the loss if it's not used.
+            supervised_loss = get_super_loss(supervised_data, model.speaker)
+            loss = loss + settings.supervision_weight * supervised_loss
         if len(speaker_obs.shape) == 2:
             speaker_obs = torch.unsqueeze(speaker_obs, 1)
         recons_loss = torch.mean(((speaker_obs - recons) ** 2))
@@ -314,7 +316,7 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
         num_correct = np.sum(pred_labels == labels.cpu().numpy())
         num_total = pred_labels.size
         running_acc = running_acc * 0.95 + 0.05 * num_correct / num_total
-        running_mse = running_mse * 0.95 + 0.05 * recons_loss.item() / num_total
+        running_mse = running_mse * 0.95 + 0.05 * recons_loss.item()
         print("Running acc", running_acc)
         print("Running mse", running_mse)
 
