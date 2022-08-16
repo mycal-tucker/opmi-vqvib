@@ -84,3 +84,12 @@ class MLP(nn.Module):
             _, dist = gumbel_softmax(x, hard=True, return_dist=True)
             likelihoods = np.mean(dist.detach().cpu().numpy(), axis=0)
         return likelihoods
+
+
+    def snap_comms(self, x):
+        if not self.onehot:
+            return x
+        # Just find argmax and turn it into a onehot
+        indices = torch.argmax(x, dim=1)
+        onehot = torch.zeros_like(x).scatter(1, indices.unsqueeze(1), 1.)
+        return onehot

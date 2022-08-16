@@ -150,3 +150,8 @@ class VQ(nn.Module):
             encoding_one_hot.scatter_(1, closest_protos, 1)
             likelihoods = np.mean(encoding_one_hot.detach().cpu().numpy(), axis=0)
         return likelihoods
+
+    def snap_comms(self, x):
+        reshaped = torch.reshape(x, (-1, self.proto_latent_dim))
+        quantized, _ = self.vq_layer(reshaped)
+        return torch.reshape(quantized, (-1, self.comm_dim))

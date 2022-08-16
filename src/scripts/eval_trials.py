@@ -87,8 +87,8 @@ if __name__ == '__main__':
     # candidates = [2, 4, 8]
     candidates = [2, 8, 16]
     # model_types = ['cont', 'vq']
-    model_types = ['vq']
+    model_types = ['onehot']
     # seeds = [1, 2]
-    seeds = [0, 1, 3]
+    seeds = [0]
     burnins = [0, 0, 0, 0, 0]
     run()

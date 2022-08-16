@@ -76,10 +76,8 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top
         with torch.no_grad():
             tensor_token = torch.Tensor(token).to(settings.device)
             nosnap_prediction = model.pred_from_comms(tensor_token, listener_obs)
-            # Snap the token to the nearest VQ
-            reshaped = torch.reshape(tensor_token, (-1, model.speaker.proto_latent_dim))
-            quantized, _ = model.speaker.vq_layer(reshaped)
-            tensor_token = torch.reshape(quantized, (-1, model.speaker.comm_dim))
+            # Snap the token to the nearest acceptable communication token
+            tensor_token = model.speaker.snap_comms(tensor_token)
             snap_prediction = model.pred_from_comms(tensor_token, listener_obs)
         nosnap_pred_labels = np.argmax(nosnap_prediction.detach().cpu().numpy(), axis=1)
         num_nosnap_correct += np.sum(nosnap_pred_labels == labels.cpu().numpy())
@@ -123,6 +121,7 @@ def get_embedding_alignment(model, dataset, glove_data):
     comms = []
     embeddings = []
     features = []
+    num_align_data = 32   # FIXME
     for f, word in zip(dataset['features'], dataset['topname']):
         speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
         speaker_obs = torch.unsqueeze(speaker_obs, 0)
@@ -136,7 +135,7 @@ def get_embedding_alignment(model, dataset, glove_data):
         comms.append(np.mean(comm.detach().cpu().numpy(), axis=0))
         embeddings.append(embedding)
         features.append(np.array(f))
-        if len(embeddings) >= 1000:
+        if len(embeddings) >= num_align_data:
             print("Breaking after", len(embeddings), "examples for word alignment")
             break
     comms = np.vstack(comms)
