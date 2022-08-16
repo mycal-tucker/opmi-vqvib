@@ -45,7 +45,8 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, file_root=None):
     plt.tight_layout()
     if file_root is not None:
         plt.savefig(file_root + 'info_plane_scatter.png')
-    plt.show()
+    # plt.show()
+    plt.close()
 
 
 def plot_multi_metrics(multi_metrics, labels=None, file_root=''):  # TODO: refactor this to be less hardcoded coloring stuff.
@@ -79,7 +80,8 @@ def plot_multi_metrics(multi_metrics, labels=None, file_root=''):  # TODO: refac
         plt.title(file_root)
     plt.tight_layout()
     plt.savefig(file_root + 'trials.png')
-    plt.show()
+    plt.close()
+    # plt.show()
 
 
 def invert_permutation(p):

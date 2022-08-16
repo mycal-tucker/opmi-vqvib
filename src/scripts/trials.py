@@ -18,8 +18,8 @@ def run_trial():
     glove_data = get_glove_vectors(comm_dim)
     train_data = get_feature_data(features_filename, selected_fraction=train_fraction)
     train_topnames, train_responses = get_unique_labels(train_data)
-    val_data = get_feature_data(features_filename, excluded_names=train_responses)
-    # val_data = train_data  # FIXME
+    # val_data = get_feature_data(features_filename, excluded_names=train_responses)
+    val_data = train_data  # FIXME
     if len(train_data) < 1000 or len(val_data) < 1000:
         return
     # viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
@@ -50,18 +50,20 @@ if __name__ == '__main__':
     feature_len = 512
     settings.see_distractor = False
     num_distractors = 1
-    num_epochs = 5000  # 1000 is way too short, but it's quick for debugging.
-    num_burnin = 2000
+    num_epochs = 20000  # 1000 is way too short, but it's quick for debugging.
+    num_burnin = 3000
     val_period = 500  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
     comm_dim = 64
     features_filename = 'data/features_nobox.csv'
 
-    train_fraction = 0.2
+    train_fraction = 1.0
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # settings.kl_weight = 0.001  # For cont
-    settings.kl_weight = 0.0002  # For VQ
-    settings.kl_incr = 0.00001
+    # settings.kl_weight = 0.001  # For VQ 1 token
+    settings.kl_weight = 0.001  # For VQ 8 tokens
+    # settings.kl_incr = 0.00001  # For VQ 1 token 0.00001 works, but is slow.
+    settings.kl_incr = 0.0003  # For VQ 8 token 0.0001 is good but a little slow, but 0.001 is too fast.
     settings.num_distractors = num_distractors
     settings.learned_marginal = False
     settings.embedding_cache = {}
@@ -82,12 +84,12 @@ if __name__ == '__main__':
     # num_unique_messages = 3 ** 8
     # num_prototypes = int(num_unique_messages ** (1 / num_tokens))
     # num_prototypes = 32
-    num_prototypes = 256
+    num_prototypes = 1024
 
-    seeds = [i for i in range(1, 2)]
+    seeds = [i for i in range(3, 5)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
-    for num_tokens in [1]:
+    for num_tokens in [8]:
         for alpha in [10]:
             settings.alpha = alpha
             for seed in seeds:

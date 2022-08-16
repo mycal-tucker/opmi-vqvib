@@ -25,12 +25,11 @@ class Net(nn.Module):
         return output
 
 
-def get_info(model, dataset, targ_dim, comm_targ=False, batch_size=1024):
+def get_info(model, dataset, targ_dim, comm_targ=False, num_epochs=200, batch_size=1024):
     # Define a network that takes in the two variables to calculate the MI of.
     mine_net = Net(512, targ_dim)
     mine_net.to(settings.device)
     optimizer = optim.Adam(mine_net.parameters())
-    num_epochs = 200
     for epoch in range(num_epochs):
         speaker_obs, listener_obs, labels, _ = gen_batch(dataset, batch_size)
         with torch.no_grad():

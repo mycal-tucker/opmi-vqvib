@@ -16,7 +16,7 @@ class VQLayer(nn.Module):
         self.beta = beta
         self.prototypes = nn.Parameter(data=torch.Tensor(num_protos, latent_dim))
         if init_vectors is not None:
-            print("Manually specifying non-trainable vector quantization.")
+            print("Manually specifying vector quantization for", len(init_vectors), "vectors.")
             self.prototypes.data = torch.from_numpy(init_vectors).type(torch.FloatTensor)
             self.prototypes.requires_grad = not settings.hardcoded_vq
         else:

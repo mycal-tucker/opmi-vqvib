@@ -47,9 +47,13 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top
     topwords = dataset['topname']
     responses = dataset['responses']
     model.eval()
-    num_correct = 0
+    num_nosnap_correct = 0
+    num_snap_correct = 0
     num_total = 0
-    for targ_idx in range(1000):
+    # eval_dataset_size = len(dataset)
+    eval_dataset_size = 1000
+    print("Evaluating English performance on", eval_dataset_size, "examples")
+    for targ_idx in range(eval_dataset_size):
         _, listener_obs, labels, _ = gen_batch(dataset, 1, vae=vae, see_distractors=settings.see_distractor,
                                             num_dist=num_dist, preset_targ_idx=targ_idx)
         # Can pick just the topname, or one of the random responses.
@@ -71,15 +75,18 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top
         token = embed_to_tok.predict(np.expand_dims(embedding, 0))
         with torch.no_grad():
             tensor_token = torch.Tensor(token).to(settings.device)
-            # Snap the token to the nearest VQ?
+            nosnap_prediction = model.pred_from_comms(tensor_token, listener_obs)
+            # Snap the token to the nearest VQ
             reshaped = torch.reshape(tensor_token, (-1, model.speaker.proto_latent_dim))
             quantized, _ = model.speaker.vq_layer(reshaped)
             tensor_token = torch.reshape(quantized, (-1, model.speaker.comm_dim))
-            prediction = model.pred_from_comms(tensor_token, listener_obs)
-        pred_labels = np.argmax(prediction.detach().cpu().numpy(), axis=1)
-        num_correct += np.sum(pred_labels == labels.cpu().numpy())
-        num_total += pred_labels.size
-    return num_correct / num_total
+            snap_prediction = model.pred_from_comms(tensor_token, listener_obs)
+        nosnap_pred_labels = np.argmax(nosnap_prediction.detach().cpu().numpy(), axis=1)
+        num_nosnap_correct += np.sum(nosnap_pred_labels == labels.cpu().numpy())
+        snap_pred_labels = np.argmax(snap_prediction.detach().cpu().numpy(), axis=1)
+        num_snap_correct += np.sum(snap_pred_labels == labels.cpu().numpy())
+        num_total += num_nosnap_correct.size
+    return num_nosnap_correct / num_total, num_snap_correct / num_total
 
 
 def plot_comms(model, dataset, basepath):
@@ -139,12 +146,12 @@ def get_embedding_alignment(model, dataset, glove_data):
     reg1.fit(comms, embeddings)
     tok_to_embed_r2 = reg1.score(comms, embeddings)
     print("Tok to word embedding regression score\t\t", tok_to_embed_r2)
-    reg1.fit(comms, comms)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
+    # reg1.fit(comms, comms)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
     reg2 = LinearRegression()
     reg2.fit(embeddings, comms)
     embed_to_tok_r2 = reg2.score(embeddings, comms)
     print("Word embedding to token regression score\t\t", embed_to_tok_r2)
-    reg2.fit(embeddings, embeddings)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
+    # reg2.fit(embeddings, embeddings)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
     return reg1, reg2, tok_to_embed_r2, embed_to_tok_r2
 
 
@@ -184,7 +191,7 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
     # get_probs(model.speaker, train_data)
     # Or we can use MINE to estimate complexity and informativeness.
     if calculate_complexity:
-        train_complexity = get_info(model, train_data, targ_dim=comm_dim, comm_targ=True)
+        train_complexity = get_info(model, train_data, targ_dim=comm_dim, num_epochs=200, comm_targ=True)
         # val_complexity = get_info(model, val_features, targ_dim=comm_dim, comm_targ=True)
         val_complexity = None
         print("Train complexity", train_complexity)
@@ -195,24 +202,40 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
     # And compare to english word embeddings (doesn't depend on number of distractors)
     tok_to_embed, embed_to_tok, tokr2, embr2 = get_embedding_alignment(model, train_data, glove_data)
     eval_batch_size = 256
-    for num_candidates in [2]:
-        # Using the embed_to_tok, map English words to tokens to see if the listener can do well.
-        eng_train_top_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data, use_top=True,
-                                                    num_dist=num_candidates - 1)
-        print("English topname train accuracy", eng_train_top_score)
-        eng_train_syn_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data, use_top=False,
-                                                    num_dist=num_candidates - 1)
-        print("English synonym train accuracy", eng_train_syn_score)
-        eng_val_top_score = evaluate_with_english(model, val_data, vae, embed_to_tok, glove_data, use_top=True,
-                                                  num_dist=num_candidates - 1)
-        print("English topname val accuracy", eng_val_top_score)
-        eng_val_syn_score = evaluate_with_english(model, val_data, vae, embed_to_tok, glove_data, use_top=False,
-                                                  num_dist=num_candidates - 1)
-        print("English synonym val accuracy", eng_val_syn_score)
+    val_is_train = len(train_data) == len(val_data)  # Not actually true, but close enough
+    if val_is_train:
+        print("WARNING: ASSUMING VALIDATION AND TRAIN ARE SAME")
+
     complexities = [train_complexity, val_complexity]
     for feature_idx, data in enumerate([train_data, val_data]):
+        if feature_idx == 1 and val_is_train:
+            pass
         for num_candidates in num_cand_to_metrics.keys():
-            acc, recons = evaluate(model, data, eval_batch_size, vae, num_dist=num_candidates - 1)
+            if feature_idx == 1 and val_is_train:
+                pass  # Just save the values from last time.
+            else:
+                acc, recons = evaluate(model, data, eval_batch_size, vae, num_dist=num_candidates - 1)
+                # Using the embed_to_tok, map English words to tokens to see if the listener can do well.
+                eng_train_top_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data,
+                                                            use_top=True,
+                                                            num_dist=num_candidates - 1)
+                print("English topname train accuracy", eng_train_top_score)
+                eng_train_syn_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data,
+                                                            use_top=False,
+                                                            num_dist=num_candidates - 1)
+                print("English synonym train accuracy", eng_train_syn_score)
+                eng_val_top_score = eng_train_top_score if val_is_train else evaluate_with_english(model, val_data, vae,
+                                                                                                   embed_to_tok,
+                                                                                                   glove_data,
+                                                                                                   use_top=True,
+                                                                                                   num_dist=num_candidates - 1)
+                print("English topname val accuracy", eng_val_top_score)
+                eng_val_syn_score = eng_train_syn_score if val_is_train else evaluate_with_english(model, val_data, vae,
+                                                                                                   embed_to_tok,
+                                                                                                   glove_data,
+                                                                                                   use_top=False,
+                                                                                                   num_dist=num_candidates - 1)
+                print("English synonym val accuracy", eng_val_syn_score)
             relevant_metrics = num_cand_to_metrics.get(num_candidates)[feature_idx]
             relevant_metrics.add_data(epoch, complexities[feature_idx], -1 * recons, acc, settings.kl_weight,
                                       tokr2, embr2, eng_train_top_score, eng_train_syn_score, eng_val_top_score, eng_val_syn_score)
@@ -279,7 +302,7 @@ def get_super_loss(supervised_data, speaker):
 
 def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm_dim, num_epochs=3000, batch_size=1024,
           burnin_epochs=500, val_period=200, plot_comms_flag=False, calculate_complexity=False):
-    supervised_data = get_supervised_data(train_data, 128, glove_data, vae)
+    supervised_data = get_supervised_data(train_data, 32, glove_data, vae)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
@@ -321,6 +344,7 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
         print("Running mse", running_mse)
 
         if epoch % val_period == val_period - 1:
+        # if epoch > burnin_epochs and 0.17 < running_mse < 0.22 and np.random.random() < 0.05:
             eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data, num_cand_to_metrics,
                        savepath, epoch, calculate_complexity=calculate_complexity, plot_comms_flag=plot_comms_flag)
 

@@ -10,7 +10,7 @@ class PerformanceMetrics:
         self.weights = []
         self.embed_r2 = []
         self.tok_r2 = []
-        self.top_eng_acc = []
+        self.top_eng_acc = []  # Each entry is a 2-tuple of no-snap, snap accuracy
         self.syn_eng_acc = []
         self.top_val_eng_acc = []
         self.syn_val_eng_acc = []
