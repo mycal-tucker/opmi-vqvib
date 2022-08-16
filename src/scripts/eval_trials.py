@@ -1,94 +1,123 @@
 import os
+import torch
+from src.data_utils.read_data import get_feature_data, get_glove_vectors
+import src.settings as settings
+from src.models.vae import VAE
+from src.scripts.main import eval_model, get_embedding_alignment, evaluate_with_english
 from src.utils.performance_metrics import PerformanceMetrics
-from src.utils.plotting import plot_scatter, plot_multi_trials, plot_multi_metrics
+import numpy as np
+from src.data_utils.helper_fns import get_unique_labels, get_entry_for_labels
+import random
+from src.utils.plotting import plot_scatter
+from src.models.decoder import Decoder
+from src.models.listener import Listener
+from src.models.team import Team
+from src.models.vq import VQ
+
+# For a given particular setup, load and evaluate all the checkpoints
+def eval_run(basepath, num_tok):
+    list_of_files = os.listdir(basepath)
+    checkpoints = sorted([int(elt) for elt in list_of_files])
+
+    mean_snapped = []
+    mean_nosnap = []
+    comps = None
+    num_cand_to_metrics = {2: [], 8: [], 16: []}
+    for empty_list in num_cand_to_metrics.values():
+        empty_list.extend([PerformanceMetrics(), PerformanceMetrics()])  # Train metrics, validation metrics
+    complexities = []
+    for idx, checkpoint in enumerate(checkpoints):
+        print("\n\n\nCheckpoint", checkpoint)
+        # Load the model
+        try:
+            team = torch.load(basepath + str(checkpoint) + '/model_obj.pt')
+        except FileNotFoundError:
+            print("Failed to load the preferred full model; falling back to statedict.")
+            feature_len = 512
+            speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=1024, specified_tok=None,
+                         num_simultaneous_tokens=num_tok,
+                         variational=True, num_imgs=1)
+            listener = Listener(feature_len)
+            decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=1)
+            team = Team(speaker, listener, decoder)
+            team.load_state_dict(torch.load(basepath + str(checkpoint) + '/model.pt'))
+            team.to(settings.device)
+        # And evaluate it
+        metric = PerformanceMetrics.from_file(basepath + str(checkpoint) + '/train_2_metrics')
+        comps = metric.complexities
+        if comps[-1] is not None:
+            complexities.append(comps[-1])
+        else:  # If we didn't calculate complexity during the training run
+            print("Running full eval to get complexity")
+            eval_model(team, vae, comm_dim, train_data, train_data, None, glove_data, num_cand_to_metrics=num_cand_to_metrics, savepath=basepath, epoch=checkpoint, calculate_complexity=True, alignment_dataset=alignment_dataset, save_model=False)
+            metric = PerformanceMetrics.from_file(basepath + str(checkpoint) + '/train_2_metrics')
+            complexities.append(metric.complexities[-1])
+        snap_accs = []
+        nosnap_accs = []
+        for align_data in alignment_datasets:
+            _, embed_to_tok, _, _ = get_embedding_alignment(team, align_data, glove_data)
+            nosnap, snap = evaluate_with_english(team, train_data, vae, embed_to_tok, glove_data,
+                                                        use_top=True,
+                                                        num_dist=1)
+            snap_accs.append(snap)
+            nosnap_accs.append(nosnap)
+        mean_snapped.append(np.mean(snap_accs))
+        mean_nosnap.append(np.mean(nosnap_accs))
+        print("Mean snap", np.mean(snap_accs))
+        print("Mean no snap", np.mean(nosnap_accs))
+        plot_scatter([complexities, mean_snapped], ['Complexity', 'English snap top'], savepath=basepath + '../snap.png')
+        plot_scatter([complexities, mean_nosnap], ['Complexity', 'English nosnap top'], savepath=basepath + '../nosnap.png')
 
 
-def gen_plots(basepath):
-    all_complexities = []
-    all_informativeness = []
-    all_eng = []
-    all_accs = {}  # model type to two lists: train and val accs, as a list for each epoch
-    snap_eng_accs = {}
-    nosnap_eng_accs = {}
-    full_paths = []
-    for base in ['train', 'val']:
-        for num_candidates in candidates:
-            full_paths.append('_'.join([base, str(num_candidates), 'metrics']))
-    for speaker_type, burnin in zip(model_types, burnins):
-        epochs = None
-        speaker_metrics = [[] for _ in range(len(full_paths))]  # Eval type to seed to metrics
-        for seed in seeds:
-            seed_dir = basepath + speaker_type + '/seed' + str(seed) + '/'
-            if not os.path.exists(seed_dir):
-                print("Path doesn't exist", seed_dir)
-                continue
-            list_of_files = os.listdir(seed_dir)
-            last_seed = max([int(f) for f in list_of_files])
-            try:
-                for i, metric_path in enumerate(full_paths):
-                    metric = PerformanceMetrics.from_file(seed_dir + str(last_seed) + '/' + metric_path)
-                    speaker_metrics[i].append(
-                        metric)
-                    # if metric.complexities[0] is not None:
-                    #     plot_scatter([metric.complexities, metric.recons], ['Complexity', 'Informativeness'])
-            except FileNotFoundError:
-                print("Problem loading for", seed_dir)
-                continue
-            if epochs is None:
-                epochs = speaker_metrics[0][-1].epoch_idxs[-burnin:]
-        train_complexities = [metric.complexities for metric in speaker_metrics[0]]
-        train_info = [metric.recons for metric in speaker_metrics[0]]
-        eng_acc = [metric.top_eng_acc for metric in speaker_metrics[0]]  # Index into having [2, 4, 16] candidates
-        all_eng.append([item[0] for sublist in eng_acc for item in sublist])  # Snap to (index 0) or no snap (idx 1)
-        all_complexities.append([item for sublist in train_complexities for item in sublist])
-        all_informativeness.append([item for sublist in train_info for item in sublist])
-        speaker_accs = [[metric.comm_accs for metric in eval_type] for eval_type in speaker_metrics]
-        speaker_accs.append(epochs)  # Need to track this too
-        all_accs[speaker_type] = speaker_accs
-        labels = ['snap', 'no_snap']
-        for eng_cand_idx in [2, 1, 0]:
-            for idx, data_dict in enumerate([snap_eng_accs, nosnap_eng_accs]):
-                top_eng_accs = [[elt[idx] for elt in metric.top_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
-                syn_eng_accs = [[elt[idx] for elt in metric.syn_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
-                top_val_eng_accs = [[elt[idx] for elt in metric.top_val_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
-                syn_val_eng_accs = [[elt[idx] for elt in metric.syn_val_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
-                data_dict['vq'] = [top_eng_accs, syn_eng_accs, top_val_eng_accs, syn_val_eng_accs, epochs]
-                for i in range(len(train_complexities)):
-                    plot_scatter([train_complexities[i], top_eng_accs[i]], ['Complexity', 'English Top'],
-                                 savepath=basepath + labels[idx] + str(eng_cand_idx) + '_eng_comp.png')
-                    plot_scatter([train_complexities[i], syn_eng_accs[i]], ['Complexity', 'English Synonyms'],
-                                 savepath=basepath + labels[idx] + str(eng_cand_idx) + '_syn_eng_comp.png')
-    # Add English data, gathered from english_analysis.py
-    all_complexities.append([1.9])
-    all_informativeness.append([-0.20])
-    sizes = [20, 20, 60]
-    plot_multi_trials([all_complexities, all_informativeness],
-                      ['VQ-VIB', 'English'],
-                      sizes, file_root=basepath)
-    plot_multi_trials([all_complexities, all_eng],
-                      ['VQ-VIB'],
-                      sizes, file_root=basepath + 'eng_')
-    plot_multi_metrics(all_accs, labels=['Train 2', 'Train 8', 'Train 16', 'Val 2', 'Val 8', 'Val 16'], file_root=basepath)
-    plot_multi_metrics(snap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'snap_eng_')
-    plot_multi_metrics(nosnap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'nosnap_eng_')
-
-
+# Iterate over combinations of hyperparameters and seeds.
 def run():
     base = 'saved_models/beta0.001'
-    for alpha in [10]:
-        # for num_tok in [1, 2, 4, 8]:
-        for num_tok in [8]:
-            setup = 'alpha' + str(alpha) + '_' + str(num_tok) + 'tok'
-            basepath = base + '/' + setup + '/'
-            gen_plots(basepath)
+    for speaker_type in model_types:
+        for s in seeds:
+            for alpha in alphas:
+                for num_tok in num_tokens:
+                    setup = 'alpha' + str(alpha) + '_' + str(num_tok) + 'tok'
+                    basepath = '/'.join([base, setup, speaker_type, 'seed' + str(s)]) + '/'
+                    eval_run(basepath, num_tok)
 
 
 if __name__ == '__main__':
-    # candidates = [2, 4, 8]
+    seed = 0
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    settings.num_distractors = 1
+    settings.see_distractor = False
+    settings.learned_marginal = False
+    settings.embedding_cache = {}
+    settings.sample_first = True
+    settings.hardcoded_vq = False
+    settings.kl_weight = 0.0
+
+    comm_dim = 64
+    features_filename = 'data/features_nobox.csv'
+
+    # Load the dataset
+    glove_data = get_glove_vectors(comm_dim)
+    train_data = get_feature_data(features_filename, selected_fraction=1.0)
+    num_align_data = 32
+    unique_topnames, _ = get_unique_labels(train_data)
+    # Get a dataset of
+    subdata = get_entry_for_labels(train_data, unique_topnames)
+    # alignment_dataset = train_data[:num_align_data]
+    alignment_dataset = subdata
+    alignment_datasets = [get_entry_for_labels(train_data, unique_topnames) for i in range(3)]
+
+    vae = VAE(512, 32)
+    vae_beta = 0.001
+    vae.load_state_dict(torch.load('saved_models/vae' + str(vae_beta) +'.pt'))
+    vae.to(settings.device)
+
     candidates = [2, 8, 16]
-    # model_types = ['cont', 'vq']
-    model_types = ['onehot']
-    # seeds = [1, 2]
-    seeds = [0]
-    burnins = [0, 0, 0, 0, 0]
+    model_types = ['vq']
+    seeds = [3]
+    alphas = [10]
+    num_tokens = [8]
     run()

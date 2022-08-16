@@ -57,6 +57,15 @@ def get_unique_labels(dataset):
     return unique_topnames, unique_responses
 
 
+def get_entry_for_labels(dataset, labels):
+    rows = []
+    for label in labels:
+        matching_rows = dataset.loc[dataset['topname'] == label].index.tolist()
+        rand_idx = int(np.random.random() * len(matching_rows))
+        rows.append(matching_rows[rand_idx])
+    big_data = dataset.iloc[rows]
+    return big_data
+
 def get_embedding_batch(all_data, embed_data, batch_size, vae=None):
     all_features = all_data['features']
     features = []

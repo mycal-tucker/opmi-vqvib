@@ -43,7 +43,7 @@ def run_trial():
 
     train(model, train_data, val_data, viz_data, glove_data, vae=vae, savepath=savepath, comm_dim=comm_dim, num_epochs=num_epochs,
           batch_size=batch_size, burnin_epochs=num_burnin, val_period=val_period,
-          plot_comms_flag=False, calculate_complexity=True)
+          plot_comms_flag=False, calculate_complexity=False)
 
 
 if __name__ == '__main__':
@@ -60,14 +60,14 @@ if __name__ == '__main__':
     train_fraction = 1.0
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # settings.kl_weight = 0.001  # For cont
-    # settings.kl_weight = 0.001  # For VQ 1 token
+    settings.kl_weight = 0.001  # For VQ 1 token
+    settings.kl_incr = 0.00001  # For VQ 1 token 0.00001 works, but is slow.
     # settings.kl_weight = 0.001  # For VQ 8 tokens
-    # settings.kl_incr = 0.00001  # For VQ 1 token 0.00001 works, but is slow.
     # settings.kl_incr = 0.0003  # For VQ 8 token 0.0001 is good but a little slow, but 0.001 is too fast.
 
     # Onehot
-    settings.kl_weight = 0.01
-    settings.kl_incr = 0
+    # settings.kl_weight = 0.01
+    # settings.kl_incr = 0
 
     settings.num_distractors = num_distractors
     settings.learned_marginal = False
@@ -93,8 +93,8 @@ if __name__ == '__main__':
 
     seeds = [i for i in range(0, 5)]
     # comm_types = ['vq', 'cont']
-    comm_types = ['onehot']
-    for num_tokens in [8]:
+    comm_types = ['vq']
+    for num_tokens in [1]:
         for alpha in [10]:
             settings.alpha = alpha
             for seed in seeds:

@@ -121,7 +121,7 @@ def get_embedding_alignment(model, dataset, glove_data):
     comms = []
     embeddings = []
     features = []
-    num_align_data = 32   # FIXME
+    max_num_align_data = 1000   # FIXME
     for f, word in zip(dataset['features'], dataset['topname']):
         speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
         speaker_obs = torch.unsqueeze(speaker_obs, 0)
@@ -135,7 +135,7 @@ def get_embedding_alignment(model, dataset, glove_data):
         comms.append(np.mean(comm.detach().cpu().numpy(), axis=0))
         embeddings.append(embedding)
         features.append(np.array(f))
-        if len(embeddings) >= num_align_data:
+        if len(embeddings) > max_num_align_data:
             print("Breaking after", len(embeddings), "examples for word alignment")
             break
     comms = np.vstack(comms)
@@ -144,12 +144,12 @@ def get_embedding_alignment(model, dataset, glove_data):
     reg1 = LinearRegression()
     reg1.fit(comms, embeddings)
     tok_to_embed_r2 = reg1.score(comms, embeddings)
-    print("Tok to word embedding regression score\t\t", tok_to_embed_r2)
+    # print("Tok to word embedding regression score\t\t", tok_to_embed_r2)
     # reg1.fit(comms, comms)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
     reg2 = LinearRegression()
     reg2.fit(embeddings, comms)
     embed_to_tok_r2 = reg2.score(embeddings, comms)
-    print("Word embedding to token regression score\t\t", embed_to_tok_r2)
+    # print("Word embedding to token regression score\t\t", embed_to_tok_r2)
     # reg2.fit(embeddings, embeddings)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
     return reg1, reg2, tok_to_embed_r2, embed_to_tok_r2
 
@@ -180,7 +180,7 @@ def get_probs(speaker, dataset):
 
 
 def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data, num_cand_to_metrics, savepath,
-               epoch, calculate_complexity=False, plot_comms_flag=False):
+               epoch, calculate_complexity=False, plot_comms_flag=False, alignment_dataset=None, save_model=True):
     # Create a directory to save information, models, etc.
     basepath = savepath + str(epoch) + '/'
     if not os.path.exists(basepath):
@@ -199,7 +199,8 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
         train_complexity = None
         val_complexity = None
     # And compare to english word embeddings (doesn't depend on number of distractors)
-    tok_to_embed, embed_to_tok, tokr2, embr2 = get_embedding_alignment(model, train_data, glove_data)
+    align_data = train_data if alignment_dataset is None else alignment_dataset
+    tok_to_embed, embed_to_tok, tokr2, embr2 = get_embedding_alignment(model, align_data, glove_data)
     eval_batch_size = 256
     val_is_train = len(train_data) == len(val_data)  # Not actually true, but close enough
     if val_is_train:
@@ -271,11 +272,14 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
     except AssertionError:
         print("Can't plot comms for whatever reason (e.g., continuous communication makes categorizing hard)")
     # Save the model and metrics to files.
-    torch.save(model.state_dict(), basepath + 'model.pt')
     for feature_idx, label in enumerate(['train', 'val']):
         for num_candidates in sorted(num_cand_to_metrics.keys()):
             metric = num_cand_to_metrics.get(num_candidates)[feature_idx]
             metric.to_file(basepath + "_".join([label, str(num_candidates), "metrics"]))
+    if not save_model:
+        return
+    torch.save(model.state_dict(), basepath + 'model.pt')
+    torch.save(model, basepath + 'model_obj.pt')
 
 
 def get_supervised_data(train_data, num_examples, glove_data, vae):
