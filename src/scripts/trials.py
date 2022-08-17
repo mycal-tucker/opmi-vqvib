@@ -32,10 +32,11 @@ def run_trial():
     if speaker_type == 'cont':
         speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=False, variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'onehot':
-        speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=True, variational=variational, num_imgs=num_imgs)
+        speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=True, num_simultaneous_tokens=num_tokens,
+                      variational=variational, num_imgs=num_imgs)
     elif speaker_type == 'vq':
-        speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, specified_tok=all_embeddings, num_simultaneous_tokens=num_tokens,
-                     variational=variational, num_imgs=num_imgs)
+        speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, specified_tok=all_embeddings,
+                     num_simultaneous_tokens=num_tokens, variational=variational, num_imgs=num_imgs)
     listener = Listener(feature_len)
     decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=num_imgs)
     model = Team(speaker, listener, decoder)
@@ -43,7 +44,7 @@ def run_trial():
 
     train(model, train_data, val_data, viz_data, glove_data, vae=vae, savepath=savepath, comm_dim=comm_dim, num_epochs=num_epochs,
           batch_size=batch_size, burnin_epochs=num_burnin, val_period=val_period,
-          plot_comms_flag=False, calculate_complexity=False)
+          plot_comms_flag=False, calculate_complexity=True)
 
 
 if __name__ == '__main__':
@@ -54,20 +55,23 @@ if __name__ == '__main__':
     num_burnin = 3000
     val_period = 500  # How often to test on the validation set and calculate various info metrics.
     batch_size = 1024
-    comm_dim = 64
+    comm_dim = 512
     features_filename = 'data/features_nobox.csv'
 
     train_fraction = 1.0
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # settings.kl_weight = 0.001  # For cont
-    settings.kl_weight = 0.001  # For VQ 1 token
-    settings.kl_incr = 0.00001  # For VQ 1 token 0.00001 works, but is slow.
+    # settings.kl_weight = 0.001  # For VQ 1 token
+    # settings.kl_incr = 0.00001  # For VQ 1 token 0.00001 works, but is slow.
     # settings.kl_weight = 0.001  # For VQ 8 tokens
     # settings.kl_incr = 0.0003  # For VQ 8 token 0.0001 is good but a little slow, but 0.001 is too fast.
 
     # Onehot
-    # settings.kl_weight = 0.01
-    # settings.kl_incr = 0
+    # settings.kl_weight = 0.001
+    # settings.kl_incr = 0.0003  # For onhot with 8 tokens .001 is too fast. 0.0001 is good but a little slow.
+    settings.kl_weight = 0.0001
+    settings.kl_incr = 0.0001
+    num_burnin = 3000
 
     settings.num_distractors = num_distractors
     settings.learned_marginal = False
@@ -91,10 +95,10 @@ if __name__ == '__main__':
     # num_prototypes = 32
     num_prototypes = 1024
 
-    seeds = [i for i in range(0, 5)]
+    seeds = [i for i in range(1, 5)]
     # comm_types = ['vq', 'cont']
-    comm_types = ['vq']
-    for num_tokens in [1]:
+    comm_types = ['onehot']
+    for num_tokens in [16]:
         for alpha in [10]:
             settings.alpha = alpha
             for seed in seeds:

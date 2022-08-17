@@ -216,26 +216,31 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
             else:
                 acc, recons = evaluate(model, data, eval_batch_size, vae, num_dist=num_candidates - 1)
                 # Using the embed_to_tok, map English words to tokens to see if the listener can do well.
-                eng_train_top_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data,
-                                                            use_top=True,
-                                                            num_dist=num_candidates - 1)
-                print("English topname train accuracy", eng_train_top_score)
-                eng_train_syn_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data,
-                                                            use_top=False,
-                                                            num_dist=num_candidates - 1)
-                print("English synonym train accuracy", eng_train_syn_score)
-                eng_val_top_score = eng_train_top_score if val_is_train else evaluate_with_english(model, val_data, vae,
-                                                                                                   embed_to_tok,
-                                                                                                   glove_data,
-                                                                                                   use_top=True,
-                                                                                                   num_dist=num_candidates - 1)
-                print("English topname val accuracy", eng_val_top_score)
-                eng_val_syn_score = eng_train_syn_score if val_is_train else evaluate_with_english(model, val_data, vae,
-                                                                                                   embed_to_tok,
-                                                                                                   glove_data,
-                                                                                                   use_top=False,
-                                                                                                   num_dist=num_candidates - 1)
-                print("English synonym val accuracy", eng_val_syn_score)
+                # During trianing, just set to none. It's so noisy that we just run eval_trials.py for this.
+                eng_train_top_score = None
+                eng_train_syn_score = None
+                eng_val_top_score = None
+                eng_val_syn_score = None
+                # eng_train_top_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data,
+                #                                             use_top=True,
+                #                                             num_dist=num_candidates - 1)
+                # print("English topname train accuracy", eng_train_top_score)
+                # eng_train_syn_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data,
+                #                                             use_top=False,
+                #                                             num_dist=num_candidates - 1)
+                # print("English synonym train accuracy", eng_train_syn_score)
+                # eng_val_top_score = eng_train_top_score if val_is_train else evaluate_with_english(model, val_data, vae,
+                #                                                                                    embed_to_tok,
+                #                                                                                    glove_data,
+                #                                                                                    use_top=True,
+                #                                                                                    num_dist=num_candidates - 1)
+                # print("English topname val accuracy", eng_val_top_score)
+                # eng_val_syn_score = eng_train_syn_score if val_is_train else evaluate_with_english(model, val_data, vae,
+                #                                                                                    embed_to_tok,
+                #                                                                                    glove_data,
+                #                                                                                    use_top=False,
+                #                                                                                    num_dist=num_candidates - 1)
+                # print("English synonym val accuracy", eng_val_syn_score)
             relevant_metrics = num_cand_to_metrics.get(num_candidates)[feature_idx]
             relevant_metrics.add_data(epoch, complexities[feature_idx], -1 * recons, acc, settings.kl_weight,
                                       tokr2, embr2, eng_train_top_score, eng_train_syn_score, eng_val_top_score, eng_val_syn_score)

@@ -39,25 +39,25 @@ def gen_plots(basepath):
         train_complexities = [metric.complexities for metric in speaker_metrics[0]]
         train_info = [metric.recons for metric in speaker_metrics[0]]
         eng_acc = [metric.top_eng_acc for metric in speaker_metrics[0]]  # Index into having [2, 4, 16] candidates
-        all_eng.append([item[0] for sublist in eng_acc for item in sublist])  # Snap to (index 0) or no snap (idx 1)
+        # all_eng.append([item[0] for sublist in eng_acc for item in sublist])  # Snap to (index 0) or no snap (idx 1)
         all_complexities.append([item for sublist in train_complexities for item in sublist])
         all_informativeness.append([item for sublist in train_info for item in sublist])
         speaker_accs = [[metric.comm_accs for metric in eval_type] for eval_type in speaker_metrics]
         speaker_accs.append(epochs)  # Need to track this too
         all_accs[speaker_type] = speaker_accs
-        labels = ['snap', 'no_snap']
-        for eng_cand_idx in [2, 1, 0]:
-            for idx, data_dict in enumerate([snap_eng_accs, nosnap_eng_accs]):
-                top_eng_accs = [[elt[idx] for elt in metric.top_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
-                syn_eng_accs = [[elt[idx] for elt in metric.syn_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
-                top_val_eng_accs = [[elt[idx] for elt in metric.top_val_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
-                syn_val_eng_accs = [[elt[idx] for elt in metric.syn_val_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
-                data_dict['vq'] = [top_eng_accs, syn_eng_accs, top_val_eng_accs, syn_val_eng_accs, epochs]
-                for i in range(len(train_complexities)):
-                    plot_scatter([train_complexities[i], top_eng_accs[i]], ['Complexity', 'English Top'],
-                                 savepath=basepath + labels[idx] + str(eng_cand_idx) + '_eng_comp.png')
-                    plot_scatter([train_complexities[i], syn_eng_accs[i]], ['Complexity', 'English Synonyms'],
-                                 savepath=basepath + labels[idx] + str(eng_cand_idx) + '_syn_eng_comp.png')
+        # labels = ['snap', 'no_snap']
+        # for eng_cand_idx in [2, 1, 0]:
+        #     for idx, data_dict in enumerate([snap_eng_accs, nosnap_eng_accs]):
+        #         top_eng_accs = [[elt[idx] for elt in metric.top_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
+        #         syn_eng_accs = [[elt[idx] for elt in metric.syn_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
+        #         top_val_eng_accs = [[elt[idx] for elt in metric.top_val_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
+        #         syn_val_eng_accs = [[elt[idx] for elt in metric.syn_val_eng_acc] for metric in speaker_metrics[eng_cand_idx]]
+        #         data_dict['vq'] = [top_eng_accs, syn_eng_accs, top_val_eng_accs, syn_val_eng_accs, epochs]
+        #         for i in range(len(train_complexities)):
+        #             plot_scatter([train_complexities[i], top_eng_accs[i]], ['Complexity', 'English Top'],
+        #                          savepath=basepath + labels[idx] + str(eng_cand_idx) + '_eng_comp.png')
+        #             plot_scatter([train_complexities[i], syn_eng_accs[i]], ['Complexity', 'English Synonyms'],
+        #                          savepath=basepath + labels[idx] + str(eng_cand_idx) + '_syn_eng_comp.png')
     # Add English data, gathered from english_analysis.py
     all_complexities.append([1.9])
     all_informativeness.append([-0.20])
@@ -77,7 +77,7 @@ def run():
     base = 'saved_models/beta0.001'
     for alpha in [10]:
         # for num_tok in [1, 2, 4, 8]:
-        for num_tok in [8]:
+        for num_tok in [16]:
             setup = 'alpha' + str(alpha) + '_' + str(num_tok) + 'tok'
             basepath = base + '/' + setup + '/'
             gen_plots(basepath)
@@ -87,8 +87,8 @@ if __name__ == '__main__':
     # candidates = [2, 4, 8]
     candidates = [2, 8, 16]
     # model_types = ['cont', 'vq']
-    model_types = ['vq']
+    model_types = ['onehot']
     # seeds = [1, 2]
-    seeds = [1]
+    seeds = [0]
     burnins = [0, 0, 0, 0, 0]
     run()

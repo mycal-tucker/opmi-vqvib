@@ -7,12 +7,15 @@ import numpy as np
 
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, output_dim, num_layers, onehot, variational=False, num_imgs=1):
+    def __init__(self, input_dim, output_dim, num_layers, onehot, num_simultaneous_tokens=1, variational=True,
+                 num_imgs=1):
         super(MLP, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dim = 512
         self.onehot = onehot
+        self.onehot_output_dim = int(self.output_dim / num_simultaneous_tokens)
+        self.num_simultaneous_tokens = num_simultaneous_tokens
         self.num_tokens = output_dim
         self.variational = variational
         self.num_imgs = num_imgs
@@ -55,15 +58,15 @@ class MLP(nn.Module):
                         self.prior_logvar - logvar - 1 + logvar.exp() / self.prior_logvar.exp() + (
                                 (self.prior_mu - mu) ** 2) / self.prior_logvar.exp(), dim=1), dim=0)
             else:
-                if self.eval_mode:
-                    output = onehot_from_logits(x)
-                    logits = x
-                else:
-                    output, dist = gumbel_softmax(x, hard=True, return_dist=True)
-                    logits = dist.log()  # Needs the log of the input
-                prior = torch.ones_like(logits) / logits.shape[1]  # Assume uniform prior for now.
+                # Create a onehot for each of the simultaneous tokens
+                # Reshape the latent into the right number
+                reshaped = torch.reshape(x, (-1, self.onehot_output_dim))
+                output, logprobs = gumbel_softmax(reshaped, hard=True, return_dist=True)
+                prior = torch.ones_like(logprobs) / logprobs.shape[1]  # Assume uniform prior for now.
                 # The order of the arguments matters a lot.
-                capacity = self.disc_loss_fn(logits, prior)
+                capacity = self.disc_loss_fn(logprobs, prior)
+                # Now regroup into a single message
+                output = torch.reshape(output, (-1, self.output_dim))
             network_loss = settings.kl_weight * capacity
         else:
             if not self.onehot:
@@ -81,15 +84,17 @@ class MLP(nn.Module):
                 x = layer(x)
                 if i != len(self.layers) - 1:
                     x = F.relu(x)
-            _, dist = gumbel_softmax(x, hard=True, return_dist=True)
+            _, logprobs = gumbel_softmax(x, hard=True, return_dist=True)
+            dist = torch.exp(logprobs)
             likelihoods = np.mean(dist.detach().cpu().numpy(), axis=0)
         return likelihoods
-
 
     def snap_comms(self, x):
         if not self.onehot:
             return x
-        # Just find argmax and turn it into a onehot
-        indices = torch.argmax(x, dim=1)
-        onehot = torch.zeros_like(x).scatter(1, indices.unsqueeze(1), 1.)
+        # Reshape to the right number of tokens per message, then snap to onehot.
+        reshaped = torch.reshape(x, (-1, self.onehot_output_dim))
+        indices = torch.argmax(reshaped, dim=1)
+        onehot = torch.zeros_like(reshaped).scatter(1, indices.unsqueeze(1), 1.)
+        onehot = torch.reshape(onehot, (-1, self.output_dim))
         return onehot

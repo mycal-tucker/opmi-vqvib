@@ -65,5 +65,5 @@ def gumbel_softmax(logits, temperature=1.0, hard=False, return_dist=False):
         y_hard = onehot_from_logits(y)
         y = (y_hard - y).detach() + y
     if return_dist:
-        return y, torch.softmax(logits, 1)
+        return y, torch.log_softmax(logits, 1)
     return y
