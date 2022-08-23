@@ -43,19 +43,22 @@ def evaluate(model, dataset, batch_size, vae, num_dist=None):
     return acc, total_recons_loss
 
 
-def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top=True, num_dist=None):
+def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top=True, num_dist=None, eng_dec=None, eng_list=None,
+                          tok_to_embed=None, use_comm_idx=False, comm_map=None):
     topwords = dataset['topname']
     responses = dataset['responses']
     model.eval()
     num_nosnap_correct = 0
     num_snap_correct = 0
     num_total = 0
+    eng_correct = 0
     # eval_dataset_size = len(dataset)
     eval_dataset_size = 1000
     print("Evaluating English performance on", eval_dataset_size, "examples")
     for targ_idx in range(eval_dataset_size):
-        _, listener_obs, labels, _ = gen_batch(dataset, 1, vae=vae, see_distractors=settings.see_distractor,
+        speaker_obs, listener_obs, labels, _ = gen_batch(dataset, 1, vae=vae, see_distractors=settings.see_distractor,
                                             num_dist=num_dist, preset_targ_idx=targ_idx)
+        labels = labels.cpu().numpy()
         # Can pick just the topname, or one of the random responses.
         topword = topwords[targ_idx]
         if not use_top:
@@ -80,11 +83,44 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top
             tensor_token = model.speaker.snap_comms(tensor_token)
             snap_prediction = model.pred_from_comms(tensor_token, listener_obs)
         nosnap_pred_labels = np.argmax(nosnap_prediction.detach().cpu().numpy(), axis=1)
-        num_nosnap_correct += np.sum(nosnap_pred_labels == labels.cpu().numpy())
+        num_nosnap_correct += np.sum(nosnap_pred_labels == labels)
         snap_pred_labels = np.argmax(snap_prediction.detach().cpu().numpy(), axis=1)
-        num_snap_correct += np.sum(snap_pred_labels == labels.cpu().numpy())
+        num_snap_correct += np.sum(snap_pred_labels == labels)
         num_total += num_nosnap_correct.size
-    return num_nosnap_correct / num_total, num_snap_correct / num_total
+
+        # If parameters are provided, also evaluate EC -> English
+        if eng_dec is None:
+            continue
+        with torch.no_grad():
+            ec_comm, _, _ = model.speaker(speaker_obs)
+            # comm_id = model.speaker.get_comm_id(ec_comm).detach().cpu().numpy()
+            # relevant_comm = ec_comm if not use_comm_idx else comm_id
+
+            ec_key = tuple(np.round(ec_comm.detach().cpu().squeeze(dim=0).numpy(), 3))
+
+            if use_comm_idx and comm_map.get(ec_key) is None:
+                # print("Couldn't find this comm! Marking as random chance")
+                eng_correct += 0.5
+                continue
+            # Convert comm id to onehot
+            ec_comm = ec_comm.detach().cpu().numpy()
+            relevant_comm = ec_comm
+            if use_comm_idx:
+                dummy = np.zeros((1, len(comm_map.keys())))
+                dummy[0, comm_map.get(ec_key)] = 1
+                relevant_comm = dummy
+            eng_comm = tok_to_embed.predict(relevant_comm)
+            eng_comm = torch.Tensor(eng_comm).to(settings.device)
+            # TODO: snap to best english embedding?
+            recons = eng_dec(eng_comm)
+            # Log the MSE just for fun
+            # mse = torch.mean((speaker_obs - recons) ** 2)
+            # print("Recons error", mse)
+            # prediction = eng_list(recons, listener_obs)
+            prediction = model.listener(recons, listener_obs)
+            pred_label = np.argmax(prediction.detach().cpu().numpy(), axis=1)
+            eng_correct += np.sum(pred_label == labels)
+    return num_nosnap_correct / num_total, num_snap_correct / num_total, eng_correct / num_total
 
 
 def plot_comms(model, dataset, basepath):
@@ -116,11 +152,13 @@ def plot_comms(model, dataset, basepath):
     plot_naming(regrouped_data, viz_method='tsne', labels=plot_labels, savepath=basepath + 'training_tsne')
 
 
-def get_embedding_alignment(model, dataset, glove_data):
+def get_embedding_alignment(model, dataset, glove_data, use_comm_idx=False):
     num_tests = 1
     comms = []
     embeddings = []
     features = []
+    comm_ids = []
+    comm_to_id = {}
     max_num_align_data = 1000   # FIXME
     for f, word in zip(dataset['features'], dataset['topname']):
         speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
@@ -132,26 +170,49 @@ def get_embedding_alignment(model, dataset, glove_data):
             embedding = get_glove_embedding(glove_data, word).to_numpy()
         except AttributeError:
             continue
-        comms.append(np.mean(comm.detach().cpu().numpy(), axis=0))
+        # comm_id = model.speaker.get_comm_id(comm).detach().cpu().numpy()
+        # comm_ids.append(comm_id)
+        np_comm = np.mean(comm.detach().cpu().numpy(), axis=0)
+        comms.append(np_comm)
+
+        dict_comm = tuple(np.round(np_comm, 3))
+        matching_id = comm_to_id.get(dict_comm)
+        if matching_id is None:
+            matching_id = len(comm_to_id.keys())
+            comm_to_id[dict_comm] = matching_id
+        comm_ids.append(matching_id)
+
         embeddings.append(embedding)
         features.append(np.array(f))
         if len(embeddings) > max_num_align_data:
             print("Breaking after", len(embeddings), "examples for word alignment")
             break
+
     comms = np.vstack(comms)
+    # comm_ids = np.vstack(comm_ids)
+    # relevant_comms = comm_ids if use_comm_idx else comms
+
+    relevant_comms = comms
+    if use_comm_idx:
+        # Convert to onehot
+        relevant_comms = np.zeros((len(comm_ids), len(comm_to_id.keys())))
+        for i, c_id in enumerate(comm_ids):
+            relevant_comms[i, c_id] = 1
     embeddings = np.vstack(embeddings)
     # Now learn two linear regressions to map to/from tokens and word embeddings.
     reg1 = LinearRegression()
-    reg1.fit(comms, embeddings)
-    tok_to_embed_r2 = reg1.score(comms, embeddings)
-    # print("Tok to word embedding regression score\t\t", tok_to_embed_r2)
+    reg1.fit(relevant_comms, embeddings)
+    tok_to_embed_r2 = reg1.score(relevant_comms, embeddings)
+    print("Tok to word embedding regression score\t\t", tok_to_embed_r2)
     # reg1.fit(comms, comms)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
     reg2 = LinearRegression()
     reg2.fit(embeddings, comms)
     embed_to_tok_r2 = reg2.score(embeddings, comms)
-    # print("Word embedding to token regression score\t\t", embed_to_tok_r2)
+    print("Word embedding to token regression score\t\t", embed_to_tok_r2)
     # reg2.fit(embeddings, embeddings)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
-    return reg1, reg2, tok_to_embed_r2, embed_to_tok_r2
+    print("Found", len(comm_to_id), "unique comm vectors!")
+    # Gross. Instead of regression score, pass back the number of unique vectors
+    return reg1, reg2, tok_to_embed_r2, len(comm_to_id), comm_to_id
 
 
 # Manually calculate the complexity of communication by sampling some inputs and comparing the conditional communication
@@ -200,7 +261,7 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
         val_complexity = None
     # And compare to english word embeddings (doesn't depend on number of distractors)
     align_data = train_data if alignment_dataset is None else alignment_dataset
-    tok_to_embed, embed_to_tok, tokr2, embr2 = get_embedding_alignment(model, align_data, glove_data)
+    tok_to_embed, embed_to_tok, tokr2, embr2, _ = get_embedding_alignment(model, align_data, glove_data)
     eval_batch_size = 256
     val_is_train = len(train_data) == len(val_data)  # Not actually true, but close enough
     if val_is_train:
@@ -310,7 +371,7 @@ def get_super_loss(supervised_data, speaker):
 
 def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm_dim, num_epochs=3000, batch_size=1024,
           burnin_epochs=500, val_period=200, plot_comms_flag=False, calculate_complexity=False):
-    supervised_data = get_supervised_data(train_data, 32, glove_data, vae)
+    supervised_data = get_supervised_data(train_data, 1024, glove_data, vae)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
@@ -319,11 +380,11 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
     num_cand_to_metrics = {2: [], 8: [], 16: []}
     for empty_list in num_cand_to_metrics.values():
         empty_list.extend([PerformanceMetrics(), PerformanceMetrics()])  # Train metrics, validation metrics
+    settings.epoch = 0
     for epoch in range(num_epochs):
+        settings.epoch += 1
         if epoch > burnin_epochs:
             settings.kl_weight += settings.kl_incr
-        print('epoch', epoch, 'of', num_epochs)
-        print("Kl weight", settings.kl_weight)
         speaker_obs, listener_obs, labels, _ = gen_batch(train_data, batch_size, vae=vae, see_distractors=settings.see_distractor)
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
@@ -348,8 +409,11 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
         num_total = pred_labels.size
         running_acc = running_acc * 0.95 + 0.05 * num_correct / num_total
         running_mse = running_mse * 0.95 + 0.05 * recons_loss.item()
-        print("Running acc", running_acc)
-        print("Running mse", running_mse)
+        if epoch % 20 == 0:
+            print('epoch', epoch, 'of', num_epochs)
+            print("Kl weight", settings.kl_weight)
+            print("Running acc", running_acc)
+            print("Running mse", running_mse)
 
         if epoch % val_period == val_period - 1:
         # if epoch > burnin_epochs and 0.17 < running_mse < 0.22 and np.random.random() < 0.05:

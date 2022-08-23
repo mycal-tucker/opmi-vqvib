@@ -132,3 +132,5 @@ dmypy.json
 data/
 saved_models/
 *.png
+
+*.pt

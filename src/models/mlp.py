@@ -19,7 +19,7 @@ class MLP(nn.Module):
         self.num_tokens = output_dim
         self.variational = variational
         self.num_imgs = num_imgs
-        self.feature_embed_dim = 16
+        self.feature_embed_dim = 64
         self.feature_embedder = nn.Linear(input_dim, self.feature_embed_dim)
         in_dim = self.feature_embed_dim * num_imgs
         out_dim = self.hidden_dim if num_layers > 1 else output_dim
@@ -67,7 +67,15 @@ class MLP(nn.Module):
                 capacity = self.disc_loss_fn(logprobs, prior)
                 # Now regroup into a single message
                 output = torch.reshape(output, (-1, self.output_dim))
-            network_loss = settings.kl_weight * capacity
+
+                # Also encourage unconditional entropy to boost number of vocab words.
+                # unconditional = torch.mean(output, 0)
+                # unconditional += 0.0001
+                # unconditional = unconditional / torch.sum(unconditional)
+                # uncond_ent = self.disc_loss_fn(unconditional.log(), torch.ones_like(unconditional) / len(unconditional))
+                # if np.random.random() < 0.01:
+                #     print("uncond_ent", uncond_ent)
+            network_loss = settings.kl_weight * capacity  # - 1.0 * uncond_ent
         else:
             if not self.onehot:
                 output = x

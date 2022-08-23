@@ -8,7 +8,7 @@ from src.models.network_utils import reparameterize
 
 
 class VQLayer(nn.Module):
-    def __init__(self, num_protos, latent_dim, init_vectors=None, beta=0.25):
+    def __init__(self, num_protos, latent_dim, init_vectors=None, beta=0.01):
         super(VQLayer, self).__init__()
         self.num_protos = num_protos
         self.latent_dim = latent_dim
@@ -20,9 +20,9 @@ class VQLayer(nn.Module):
             self.prototypes.data = torch.from_numpy(init_vectors).type(torch.FloatTensor)
             self.prototypes.requires_grad = not settings.hardcoded_vq
         else:
-            self.prototypes.data.uniform_(-1 / self.num_protos, 1 / self.num_protos)
+            self.prototypes.data.uniform_(-1, 1)
 
-    def forward(self, latents):
+    def forward(self, latents, logvar=None):
         dists_to_protos = torch.sum(latents ** 2, dim=1, keepdim=True) + \
                           torch.sum(self.prototypes ** 2, dim=1) - 2 * \
                           torch.matmul(latents, self.prototypes.t())
@@ -41,8 +41,17 @@ class VQLayer(nn.Module):
 
         # Compute the entropy of the distribution for which prototypes are used. Uses a differentiable approximation
         # for the distributions.
-        ent = self.get_categorical_ent(dists_to_protos)
-        vq_loss += 0.01 * ent
+
+        if logvar is not None:
+            vector_diffs = latents.unsqueeze(1) - self.prototypes
+            normalized_diffs = torch.div(vector_diffs, logvar.unsqueeze(1).exp() ** 0.5)
+            normalized_dists = torch.sum(normalized_diffs ** 2, dim=2)
+        else:  # It's fine because this will never be the case in actual training.
+            normalized_dists = dists_to_protos
+
+        # ent = self.get_categorical_ent(dists_to_protos)
+        ent = self.get_categorical_ent(normalized_dists)
+        vq_loss += 0.05 * ent
 
         # Add the residue back to the latents
         quantized_latents = latents + (quantized_latents - latents).detach()
@@ -51,13 +60,21 @@ class VQLayer(nn.Module):
     def get_categorical_ent(self, distances):
         # Approximate the onehot of which prototype via a softmax of the negative distances
         logdist = torch.log_softmax(-distances, dim=1)
-        soft_dist = torch.mean(logdist.exp(), dim=0)
-        epsilon = 0.00000001  # Need a fuzz factor for numerical stability.
-        soft_dist += epsilon
-        soft_dist = soft_dist / torch.sum(soft_dist)
-        logdist = soft_dist.log()
-        entropy = torch.sum(-1 * soft_dist * logdist)
-        return entropy
+        epsilon = 0.000001  # Need a fuzz factor for numerical stability.
+        # # Discourage entropy of individual messages (make them very peaky)
+        # indiv_dist = logdist.exp() + epsilon
+        # indiv_dist = indiv_dist / torch.sum(indiv_dist)
+        # logdist = indiv_dist.log()
+        # indiv_ent = torch.sum(-1 * indiv_dist * logdist) / indiv_dist.shape[0]
+
+        # Measure entropy of messages, over the whole batch.
+        batch_dist = torch.mean(logdist.exp() + epsilon, dim=0)
+        logdist = batch_dist.log()
+        batch_ent = torch.sum(-1 * batch_dist * logdist)
+
+        if np.random.random() < 0.01:
+            print("Ent val", batch_ent.item())
+        return batch_ent
 
 
 class VQ(nn.Module):
@@ -107,7 +124,7 @@ class VQ(nn.Module):
             logvar = self.fc_var(reshaped)
             sample = reparameterize(mu, logvar) if not self.eval_mode else mu
             # Quantize the vectors
-            output, proto_loss = self.vq_layer(sample)
+            output, proto_loss = self.vq_layer(sample, logvar)
             # Regroup the tokens into messages, now with possibly multiple tokens.
             output = torch.reshape(output, (-1, self.comm_dim))
             relevant_mu = mu
@@ -122,6 +139,8 @@ class VQ(nn.Module):
                 regularization_loss = torch.mean(self.prior_logvar ** 2) + torch.mean(self.prior_mu ** 2)
             total_loss = settings.kl_weight * kld_loss + proto_loss + 0.01 * regularization_loss
             capacity = kld_loss
+            if np.random.random() < 0.01:
+                print("KLD loss", kld_loss.item())
         else:
             x = self.fc_mu(x)
             output, total_loss = self.vq_layer(x)
@@ -155,3 +174,21 @@ class VQ(nn.Module):
         reshaped = torch.reshape(x, (-1, self.proto_latent_dim))
         quantized, _ = self.vq_layer(reshaped)
         return torch.reshape(quantized, (-1, self.comm_dim))
+
+    def get_comm_id(self, comm):
+        # Return the index of the closest prototype.
+        # Or, if there are multiple tokens, do the clever multiplication
+        vocab_size = self.num_tokens ** self.num_simultaneous_tokens
+        reshaped = torch.reshape(comm, (-1, self.proto_latent_dim))
+        dists_to_protos = torch.sum(reshaped ** 2, dim=1, keepdim=True) + \
+                          torch.sum(self.vq_layer.prototypes ** 2, dim=1) - 2 * \
+                          torch.matmul(reshaped, self.vq_layer.prototypes.t())
+
+        closest_protos = torch.argmin(dists_to_protos, dim=1).unsqueeze(1)
+        # idx = 0
+        # for i, closest_proto in enumerate(closest_protos):
+        #     idx += (self.num_tokens ** i) * closest_proto
+        idx = closest_protos  # FIXME: do the math for multiple tokens
+        onehot = torch.zeros((1, vocab_size))
+        onehot[0, idx] = 1
+        return onehot

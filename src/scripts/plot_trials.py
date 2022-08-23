@@ -77,7 +77,7 @@ def run():
     base = 'saved_models/beta0.001'
     for alpha in [10]:
         # for num_tok in [1, 2, 4, 8]:
-        for num_tok in [16]:
+        for num_tok in [1]:
             setup = 'alpha' + str(alpha) + '_' + str(num_tok) + 'tok'
             basepath = base + '/' + setup + '/'
             gen_plots(basepath)
@@ -87,8 +87,8 @@ if __name__ == '__main__':
     # candidates = [2, 4, 8]
     candidates = [2, 8, 16]
     # model_types = ['cont', 'vq']
-    model_types = ['onehot']
+    model_types = ['vq2']
     # seeds = [1, 2]
-    seeds = [0]
+    seeds = [1]
     burnins = [0, 0, 0, 0, 0]
     run()

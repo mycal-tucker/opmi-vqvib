@@ -3,12 +3,16 @@ import torch
 import torch.optim as optim
 import numpy as np
 import src.settings as settings
-from src.data_utils.helper_fns import get_embedding_batch
+from src.data_utils.helper_fns import get_embedding_batch, gen_batch
 from src.data_utils.read_data import get_feature_data, get_glove_vectors
 from src.models.decoder import Decoder
 from src.models.vae import VAE
+from src.models.listener import Listener
+from src.models.team import Team
 from src.utils.mine import Net
 import matplotlib.pyplot as plt
+import torch.nn as nn
+
 
 def train(data, model):
     optimizer = optim.Adam(model.parameters())
@@ -73,22 +77,64 @@ def get_complexity(data):
     return mutual_info, comps
 
 
+def train_listener(data):
+    settings.see_distractor = False
+    settings.num_distractors = 1
+
+    dec = Decoder(comm_dim, 512, num_layers=3)
+    listener = Listener(512)
+    team = Team(None, listener, dec)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(team.parameters())
+    running_acc = 0
+    running_mse = 0
+    for epoch in range(1000):
+        if epoch % 10 == 0:
+            print("Epoch", epoch)
+            print("Running acc", running_acc)
+            print("Running mse", running_mse)
+        speaker_obs, listener_obs, labels, embeddings = gen_batch(data, batch_size, vae=vae, glove_data=glove_data,
+                                                         see_distractors=settings.see_distractor)
+        optimizer.zero_grad()
+        embs = torch.Tensor(np.vstack(embeddings))
+        recons = dec(embs)
+        pred = listener(recons, listener_obs)
+        recons_loss = torch.mean(((speaker_obs - recons) ** 2))
+        pred_loss = criterion(pred, labels)
+
+        loss = pred_loss + 10 * recons_loss
+        loss.backward()
+        optimizer.step()
+        pred_labels = np.argmax(pred.detach().cpu().numpy(), axis=1)
+        num_correct = np.sum(pred_labels == labels.cpu().numpy())
+        num_total = pred_labels.size
+        running_acc = running_acc * 0.95 + 0.05 * num_correct / num_total
+        running_mse = running_mse * 0.95 + 0.05 * recons_loss.item()
+    torch.save(dec, 'english_dec64.pt')
+    torch.save(listener, 'english_list64.pt')
+
+
 def run():
     train_data = get_feature_data(features_filename)
-    complexity, training_log = get_complexity(train_data)
-    print("Complexity", complexity)
-    plt.plot(training_log)
-    plt.xlabel("Training epoch")
-    plt.ylabel("Complexity")
-    plt.show()
+    # Calculate complexity
+    # complexity, training_log = get_complexity(train_data)
+    # print("Complexity", complexity)
+    # plt.plot(training_log)
+    # plt.xlabel("Training epoch")
+    # plt.ylabel("Complexity")
+    # plt.show()
+    # Calculate informativeness via an autoencoder
     model = Decoder(comm_dim, 512, num_layers=3)
     model.to(settings.device)
     train(train_data, model)
+    torch.save(model, 'english64.pt')
+    # Calculate utility via a decoder and listener
+    # train_listener(train_data)
 
 
 if __name__ == '__main__':
     features_filename = 'data/features_nobox.csv'
-    comm_dim = 100  # Align with glove embedding size
+    comm_dim = 64  # Align with glove embedding size
     num_epochs = 3000
     batch_size = 256
     # settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'

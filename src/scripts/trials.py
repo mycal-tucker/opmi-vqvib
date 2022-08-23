@@ -6,6 +6,7 @@ from src.models.listener import Listener
 from src.models.mlp import MLP
 from src.models.team import Team
 from src.models.vq import VQ
+from src.models.vq2 import VQ2
 import numpy as np
 from src.models.vae import VAE
 import torch
@@ -37,6 +38,9 @@ def run_trial():
     elif speaker_type == 'vq':
         speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, specified_tok=all_embeddings,
                      num_simultaneous_tokens=num_tokens, variational=variational, num_imgs=num_imgs)
+    elif speaker_type == 'vq2':
+        speaker = VQ2(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, specified_tok=all_embeddings,
+                     num_simultaneous_tokens=num_tokens, variational=variational, num_imgs=num_imgs)
     listener = Listener(feature_len)
     decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=num_imgs)
     model = Team(speaker, listener, decoder)
@@ -52,26 +56,30 @@ if __name__ == '__main__':
     settings.see_distractor = False
     num_distractors = 1
     num_epochs = 20000  # 1000 is way too short, but it's quick for debugging.
-    num_burnin = 3000
-    val_period = 500  # How often to test on the validation set and calculate various info metrics.
-    batch_size = 1024
-    comm_dim = 512
+    num_burnin = 10000
+    val_period = 1000  # How often to test on the validation set and calculate various info metrics.
+    batch_size = 128  # TODO: try bigger batch size. I think it'll improve capacity measures.
+    comm_dim = 64
     features_filename = 'data/features_nobox.csv'
 
     train_fraction = 1.0
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # settings.kl_weight = 0.001  # For cont
     # settings.kl_weight = 0.001  # For VQ 1 token
-    # settings.kl_incr = 0.00001  # For VQ 1 token 0.00001 works, but is slow.
+    # settings.kl_incr = 0.000001  # For VQ 1 token 0.00001 works, but is slow.
     # settings.kl_weight = 0.001  # For VQ 8 tokens
     # settings.kl_incr = 0.0003  # For VQ 8 token 0.0001 is good but a little slow, but 0.001 is too fast.
 
+    # VQ2
+    settings.kl_weight = 0.01  # Start with something like 0.01 to encourage codebook utilization.
+    settings.kl_incr = 0.000005  # 0.0001 is a little too fast
+
     # Onehot
     # settings.kl_weight = 0.001
+    # settings.kl_incr = 0.00001  # For onehot with 1 token
+    # settings.kl_weight = 0.001
     # settings.kl_incr = 0.0003  # For onhot with 8 tokens .001 is too fast. 0.0001 is good but a little slow.
-    settings.kl_weight = 0.0001
-    settings.kl_incr = 0.0001
-    num_burnin = 3000
+    # num_burnin = 3000
 
     settings.num_distractors = num_distractors
     settings.learned_marginal = False
@@ -95,10 +103,11 @@ if __name__ == '__main__':
     # num_prototypes = 32
     num_prototypes = 1024
 
-    seeds = [i for i in range(1, 5)]
+    starting_weight = settings.kl_weight
+    seeds = [i for i in range(0, 1)]
     # comm_types = ['vq', 'cont']
-    comm_types = ['onehot']
-    for num_tokens in [16]:
+    comm_types = ['vq2']
+    for num_tokens in [1]:
         for alpha in [10]:
             settings.alpha = alpha
             for seed in seeds:
@@ -107,5 +116,6 @@ if __name__ == '__main__':
                     random.seed(seed)
                     np.random.seed(seed)
                     torch.manual_seed(seed)
+                    settings.kl_weight = starting_weight
                     savepath = 'saved_models/beta' + str(vae_beta) + '/alpha' + str(settings.alpha) + '_' + str(num_tokens) + 'tok/' + speaker_type + '/seed' + str(seed) + '/'
                     run_trial()

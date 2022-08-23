@@ -19,14 +19,15 @@ def gen_batch(all_data, batch_size, vae=None, glove_data=None, see_distractors=F
     all_words = all_data['topname']
     if num_dist is None:
         num_dist = settings.num_distractors
-    for _ in range(batch_size):
+    while len(labels) < batch_size:
         targ_idx = int(np.random.random() * len(all_features)) if preset_targ_idx is None else preset_targ_idx
         # Get the word embedding
         if glove_data is not None:
             word = all_words[targ_idx]
             emb = get_glove_embedding(glove_data, word)
-            if emb is not None:
-                emb = emb.to_numpy()
+            if emb is None:
+                continue
+            emb = emb.to_numpy()
             embeddings.append(emb)
         targ_features = all_features[targ_idx]
         distractor_features = [all_features[int(np.random.random() * len(all_features))] for _ in range(num_dist)]
