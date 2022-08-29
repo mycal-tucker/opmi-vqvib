@@ -142,7 +142,7 @@ def run():
             for alpha in alphas:
                 for num_tok in num_tokens:
                     setup = 'alpha' + str(alpha) + '_' + str(num_tok) + 'tok'
-                    basepath = '/'.join([base, setup, speaker_type, 'seed' + str(s)]) + '/'
+                    basepath = '/'.join([base, setup, speaker_type, 'klweight0.01', 'seed' + str(s)]) + '/'
                     eval_run(basepath, num_tok, speaker_type)
 
 
@@ -186,8 +186,8 @@ if __name__ == '__main__':
     vae.to(settings.device)
 
     candidates = [2, 8, 16]
-    model_types = ['vq2']
-    seeds = [1]
+    model_types = ['vq']
+    seeds = [0]
     alphas = [10]
     num_tokens = [1]
     run()

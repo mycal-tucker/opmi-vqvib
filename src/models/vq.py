@@ -4,11 +4,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import src.settings as settings
-from src.models.network_utils import reparameterize
+from src.models.network_utils import reparameterize, gumbel_softmax
 
 
 class VQLayer(nn.Module):
-    def __init__(self, num_protos, latent_dim, init_vectors=None, beta=0.01):
+    def __init__(self, num_protos, latent_dim, init_vectors=None, beta=0.25):
         super(VQLayer, self).__init__()
         self.num_protos = num_protos
         self.latent_dim = latent_dim
@@ -20,61 +20,94 @@ class VQLayer(nn.Module):
             self.prototypes.data = torch.from_numpy(init_vectors).type(torch.FloatTensor)
             self.prototypes.requires_grad = not settings.hardcoded_vq
         else:
-            self.prototypes.data.uniform_(-1, 1)
+            self.prototypes.data.uniform_(-1/ self.num_protos, 1/self.num_protos)
 
-    def forward(self, latents, logvar=None):
+    def forward(self, latents, mus=None, logvar=None):
         dists_to_protos = torch.sum(latents ** 2, dim=1, keepdim=True) + \
                           torch.sum(self.prototypes ** 2, dim=1) - 2 * \
                           torch.matmul(latents, self.prototypes.t())
-
         closest_protos = torch.argmin(dists_to_protos, dim=1).unsqueeze(1)
         encoding_one_hot = torch.zeros(closest_protos.size(0), self.num_protos).to(settings.device)
         encoding_one_hot.scatter_(1, closest_protos, 1)
+        # encoding_one_hot = gumbel_softmax(-dists_to_protos, hard=True, temperature=0.1)
+        epsilon = 0.00000001
+        prior = torch.mean(encoding_one_hot + epsilon, dim=0)
+        normalizer = torch.sum(prior)
+        prior = prior / normalizer
+        true_ent = torch.sum(-1 * prior * prior.log())
+
+        do_print = np.random.random() < 0.01
 
         quantized_latents = torch.matmul(encoding_one_hot, self.prototypes)
 
         # Compute the VQ Losses
-        commitment_loss = F.mse_loss(quantized_latents.detach(), latents)
-        embedding_loss = F.mse_loss(quantized_latents, latents.detach())
+        if mus is None:
+            commitment_loss = F.mse_loss(quantized_latents.detach(), latents)
+            embedding_loss = F.mse_loss(quantized_latents, latents.detach())
+        else:
+            commitment_loss = F.mse_loss(quantized_latents.detach(), mus)
+            embedding_loss = F.mse_loss(quantized_latents, mus.detach())
 
-        vq_loss = commitment_loss * self.beta + embedding_loss
+        vq_loss = 1.0 * (commitment_loss * self.beta + 1.0 * embedding_loss)
 
         # Compute the entropy of the distribution for which prototypes are used. Uses a differentiable approximation
         # for the distributions.
-
         if logvar is not None:
-            vector_diffs = latents.unsqueeze(1) - self.prototypes
-            normalized_diffs = torch.div(vector_diffs, logvar.unsqueeze(1).exp() ** 0.5)
-            normalized_dists = torch.sum(normalized_diffs ** 2, dim=2)
-        else:  # It's fine because this will never be the case in actual training.
-            normalized_dists = dists_to_protos
+            # The correct thing is to approximate the entropy of the batch
+            vector_diffs = mus.unsqueeze(1) - self.prototypes
 
-        # ent = self.get_categorical_ent(dists_to_protos)
-        ent = self.get_categorical_ent(normalized_dists)
+            # scaling = torch.exp(0.5 * logvar).unsqueeze(1) + 0.00001  # Don't want to divide by zero ever.
+            # normalized_diffs = torch.div(vector_diffs, scaling)
+            normalized_diffs = vector_diffs / 2
+            square_distances = torch.square(normalized_diffs)
+            normalized_dists = torch.sum(square_distances, dim=2)
+            neg_dist = -0.5 * normalized_dists
+            exponents = neg_dist.exp() + epsilon
+            row_sums = torch.sum(exponents, dim=1, keepdim=True)
+            row_probs = torch.div(exponents, row_sums)
+            approx_probs = torch.mean(row_probs, dim=0)
+            # if do_print:
+            #     print("Vector diffs", vector_diffs)
+            #     print("Scale", scaling)
+            #     print("Normalized diffs", normalized_diffs)
+            #     print("True prior", prior)
+            #     print("Approx prob", approx_probs)
+            logdist = approx_probs.log()
+            ent = torch.sum(-1 * approx_probs * logdist)
+
+            # Instead of doing the batch entropy, take entropy of each individual and then average those entropies.
+            # vector_diffs = mus.unsqueeze(1) - self.prototypes
+            # scaling = torch.exp(0.5 * logvar).unsqueeze(1) + 0.00001  # Don't want to divide by zero ever.
+            # normalized_diffs = torch.div(vector_diffs, scaling)
+            # square_distances = torch.square(normalized_diffs)
+            # normalized_dists = torch.sum(square_distances, dim=2)
+            # neg_dist = -0.5 * normalized_dists
+            # exponents = neg_dist.exp() + epsilon
+            # row_sums = torch.sum(exponents, dim=1, keepdim=True)
+            # row_probs = torch.div(exponents, row_sums)
+            # log_probs = row_probs.log()
+            # row_ents = -1 * torch.sum(torch.mul(row_probs, log_probs), dim=1)
+            # ent = torch.mean(row_ents)
+        else:  # It's fine because this will never be the case in actual training.
+            ent = 0
+
         vq_loss += 0.05 * ent
+        if do_print:
+            print("Ent val", ent)
+            # print("Stds", stds)
+            print("True ent", true_ent.item())
+            # if ent < true_ent:
+            #     # print("Vector diffs", vector_diffs)
+            #     # print("Scale", scaling)
+            #     # print("Normalized diffs", normalized_diffs)
+            #     print("True prior", prior)
+            #     print("Approx prob", approx_probs)
+            # print("Commitment loss", commitment_loss.item())
+            # print("Embedding loss", embedding_loss.item())
 
         # Add the residue back to the latents
         quantized_latents = latents + (quantized_latents - latents).detach()
         return quantized_latents, vq_loss
-
-    def get_categorical_ent(self, distances):
-        # Approximate the onehot of which prototype via a softmax of the negative distances
-        logdist = torch.log_softmax(-distances, dim=1)
-        epsilon = 0.000001  # Need a fuzz factor for numerical stability.
-        # # Discourage entropy of individual messages (make them very peaky)
-        # indiv_dist = logdist.exp() + epsilon
-        # indiv_dist = indiv_dist / torch.sum(indiv_dist)
-        # logdist = indiv_dist.log()
-        # indiv_ent = torch.sum(-1 * indiv_dist * logdist) / indiv_dist.shape[0]
-
-        # Measure entropy of messages, over the whole batch.
-        batch_dist = torch.mean(logdist.exp() + epsilon, dim=0)
-        logdist = batch_dist.log()
-        batch_ent = torch.sum(-1 * batch_dist * logdist)
-
-        if np.random.random() < 0.01:
-            print("Ent val", batch_ent.item())
-        return batch_ent
 
 
 class VQ(nn.Module):
@@ -124,7 +157,7 @@ class VQ(nn.Module):
             logvar = self.fc_var(reshaped)
             sample = reparameterize(mu, logvar) if not self.eval_mode else mu
             # Quantize the vectors
-            output, proto_loss = self.vq_layer(sample, logvar)
+            output, proto_loss = self.vq_layer(sample, mu, logvar)
             # Regroup the tokens into messages, now with possibly multiple tokens.
             output = torch.reshape(output, (-1, self.comm_dim))
             relevant_mu = mu

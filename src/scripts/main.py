@@ -8,7 +8,7 @@ from sklearn.linear_model import LinearRegression
 import random
 
 import src.settings as settings
-from src.data_utils.helper_fns import gen_batch, get_glove_embedding, get_unique_labels
+from src.data_utils.helper_fns import gen_batch, get_glove_embedding, get_unique_labels, get_entry_for_labels
 from src.data_utils.read_data import get_feature_data
 from src.models.decoder import Decoder
 from src.models.listener import Listener
@@ -165,7 +165,7 @@ def get_embedding_alignment(model, dataset, glove_data, use_comm_idx=False):
         speaker_obs = torch.unsqueeze(speaker_obs, 0)
         with torch.no_grad():
             speaker_obs = speaker_obs.repeat(num_tests, 1)
-        comm, _, _ = model.speaker(speaker_obs)
+            comm, _, _ = model.speaker(speaker_obs)
         try:
             embedding = get_glove_embedding(glove_data, word).to_numpy()
         except AttributeError:
@@ -351,27 +351,32 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
 def get_supervised_data(train_data, num_examples, glove_data, vae):
     speaker_obs = []
     embs = []
-    while len(embs) < num_examples:
-        obs, _, _, emb = gen_batch(train_data, 1, glove_data=glove_data, vae=vae)
+    for i in range(len(train_data)):
+        if len(embs) == num_examples:
+            break
+        obs, _, _, emb = gen_batch(train_data, 1, glove_data=glove_data, vae=vae, preset_targ_idx=i)
         if emb[0] is not None:  # It's a list
             embs.append(emb)
             speaker_obs.append(obs.cpu())  # Put on the cpu to get into numpy for moving. Awkward, I know, but whatever.
     speaker_obs = torch.Tensor(np.vstack(speaker_obs)).to(settings.device)
     embs = torch.Tensor(np.vstack(embs)).to(settings.device)
-    return [speaker_obs, embs]  # FIXME: would be better to return indices rather than data, but that's so much slower
+    return [speaker_obs, embs]
 
 
 def get_super_loss(supervised_data, speaker):
     supervision_crit = nn.MSELoss()
     comms, _, _ = speaker(supervised_data[0])
     supervised_loss = supervision_crit(comms, supervised_data[1])
-    print("Supervised loss", supervised_loss)
+    # print("Supervised loss", supervised_loss)
     return supervised_loss
 
 
 def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm_dim, num_epochs=3000, batch_size=1024,
           burnin_epochs=500, val_period=200, plot_comms_flag=False, calculate_complexity=False):
-    supervised_data = get_supervised_data(train_data, 1024, glove_data, vae)
+    unique_topnames, _ = get_unique_labels(train_data)
+    sup_dataset = get_entry_for_labels(train_data, unique_topnames)
+    sup_dataset.reset_index(inplace=True)
+    supervised_data = get_supervised_data(sup_dataset, 1024, glove_data, vae)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
@@ -390,6 +395,7 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
 
         loss = criterion(outputs, labels)
+        supervised_loss = 0
         if settings.supervision_weight != 0:  # Don't even bother computing the loss if it's not used.
             supervised_loss = get_super_loss(supervised_data, model.speaker)
             loss = loss + settings.supervision_weight * supervised_loss
@@ -411,9 +417,11 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
         running_mse = running_mse * 0.95 + 0.05 * recons_loss.item()
         if epoch % 20 == 0:
             print('epoch', epoch, 'of', num_epochs)
+            print("Overall loss", loss.item())
             print("Kl weight", settings.kl_weight)
             print("Running acc", running_acc)
             print("Running mse", running_mse)
+            print("Supervised loss", supervised_loss)
 
         if epoch % val_period == val_period - 1:
         # if epoch > burnin_epochs and 0.17 < running_mse < 0.22 and np.random.random() < 0.05:

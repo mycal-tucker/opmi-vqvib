@@ -26,6 +26,8 @@ def gen_batch(all_data, batch_size, vae=None, glove_data=None, see_distractors=F
             word = all_words[targ_idx]
             emb = get_glove_embedding(glove_data, word)
             if emb is None:
+                if preset_targ_idx is not None:  # No embedding for the target id you want.
+                    return None, None, None, [None]
                 continue
             emb = emb.to_numpy()
             embeddings.append(emb)

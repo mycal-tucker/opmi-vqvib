@@ -22,7 +22,7 @@ class VQLayer(nn.Module):
             self.prototypes.data = torch.from_numpy(init_vectors).type(torch.FloatTensor)
             self.prototypes.requires_grad = not settings.hardcoded_vq
         else:
-            self.prototypes.data.uniform_(-1 / self.num_protos, 1 / self.num_protos)
+            self.prototypes.data.uniform_(-1, 1)
 
     def forward(self, latents):
         vector_diffs = latents.unsqueeze(1) - self.prototypes
@@ -51,10 +51,11 @@ class VQLayer(nn.Module):
             # print("Embedding loss", embedding_loss.item())
             print("Capacity", capacity.item())
             print("Entropy", ent.item())
-        if settings.epoch > 5000:
-            vq_loss += 0.001 * ent
-        else:
-            vq_loss -= 0.001 * ent
+        # if settings.epoch > 5000:
+        #     vq_loss += 0.001 * ent
+        # else:
+        #     vq_loss -= 0.001 * ent
+        vq_loss += 0.01 * ent
 
         # Get the categorical entropy of all messages used.
         # We want each token to be individually peaky, but overall to use lots of tokens.

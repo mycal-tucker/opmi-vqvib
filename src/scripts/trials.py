@@ -65,14 +65,14 @@ if __name__ == '__main__':
     train_fraction = 1.0
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # settings.kl_weight = 0.001  # For cont
-    # settings.kl_weight = 0.001  # For VQ 1 token
-    # settings.kl_incr = 0.000001  # For VQ 1 token 0.00001 works, but is slow.
+    settings.kl_weight = 0.01  # For VQ 1 token, 0.001
+    settings.kl_incr = 0.000001  # For VQ 1 token 0.00001 works, but is slow.
     # settings.kl_weight = 0.001  # For VQ 8 tokens
     # settings.kl_incr = 0.0003  # For VQ 8 token 0.0001 is good but a little slow, but 0.001 is too fast.
 
     # VQ2
-    settings.kl_weight = 0.01  # Start with something like 0.01 to encourage codebook utilization.
-    settings.kl_incr = 0.000005  # 0.0001 is a little too fast
+    # settings.kl_weight = 0.01  # Start with something like 0.01 to encourage codebook utilization.
+    # settings.kl_incr = 0.000005  # 0.0001 is a little too fast
 
     # Onehot
     # settings.kl_weight = 0.001
@@ -104,9 +104,9 @@ if __name__ == '__main__':
     num_prototypes = 1024
 
     starting_weight = settings.kl_weight
-    seeds = [i for i in range(0, 1)]
+    seeds = [i for i in range(0, 5)]
     # comm_types = ['vq', 'cont']
-    comm_types = ['vq2']
+    comm_types = ['vq']
     for num_tokens in [1]:
         for alpha in [10]:
             settings.alpha = alpha
@@ -117,5 +117,5 @@ if __name__ == '__main__':
                     np.random.seed(seed)
                     torch.manual_seed(seed)
                     settings.kl_weight = starting_weight
-                    savepath = 'saved_models/beta' + str(vae_beta) + '/alpha' + str(settings.alpha) + '_' + str(num_tokens) + 'tok/' + speaker_type + '/seed' + str(seed) + '/'
+                    savepath = 'saved_models/beta' + str(vae_beta) + '/alpha' + str(settings.alpha) + '_' + str(num_tokens) + 'tok/' + speaker_type + '/klweight' + str(starting_weight) + '/seed' + str(seed) + '/'
                     run_trial()
