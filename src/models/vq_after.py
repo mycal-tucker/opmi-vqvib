@@ -22,7 +22,7 @@ class VQLayer(nn.Module):
         else:
             self.prototypes.data.uniform_(-1/ self.num_protos, 1/self.num_protos)
 
-    def forward(self, latents, mus=None, logvar=None):
+    def forward(self, latents):
         dists_to_protos = torch.sum(latents ** 2, dim=1, keepdim=True) + \
                           torch.sum(self.prototypes ** 2, dim=1) - 2 * \
                           torch.matmul(latents, self.prototypes.t())
@@ -41,79 +41,19 @@ class VQLayer(nn.Module):
         quantized_latents = torch.matmul(encoding_one_hot, self.prototypes)
 
         # Compute the VQ Losses
-        if mus is None:
-            commitment_loss = F.mse_loss(quantized_latents.detach(), latents)
-            embedding_loss = F.mse_loss(quantized_latents, latents.detach())
-        else:
-            commitment_loss = F.mse_loss(quantized_latents.detach(), mus)
-            embedding_loss = F.mse_loss(quantized_latents, mus.detach())
+        commitment_loss = F.mse_loss(quantized_latents.detach(), latents)
+        embedding_loss = F.mse_loss(quantized_latents, latents.detach())
 
         vq_loss = 1.0 * (commitment_loss * self.beta + 1.0 * embedding_loss)
-
-        # Compute the entropy of the distribution for which prototypes are used. Uses a differentiable approximation
-        # for the distributions.
-        if logvar is not None:
-            # The correct thing is to approximate the entropy of the batch
-            vector_diffs = mus.unsqueeze(1) - self.prototypes
-
-            # scaling = torch.exp(0.5 * logvar).unsqueeze(1) + 0.00001  # Don't want to divide by zero ever.
-            # normalized_diffs = torch.div(vector_diffs, scaling)
-            normalized_diffs = vector_diffs / 2
-            square_distances = torch.square(normalized_diffs)
-            normalized_dists = torch.sum(square_distances, dim=2)
-            neg_dist = -0.5 * normalized_dists
-            exponents = neg_dist.exp() + epsilon
-            row_sums = torch.sum(exponents, dim=1, keepdim=True)
-            row_probs = torch.div(exponents, row_sums)
-            approx_probs = torch.mean(row_probs, dim=0)
-            # if do_print:
-            #     print("Vector diffs", vector_diffs)
-            #     print("Scale", scaling)
-            #     print("Normalized diffs", normalized_diffs)
-            #     print("True prior", prior)
-            #     print("Approx prob", approx_probs)
-            logdist = approx_probs.log()
-            ent = torch.sum(-1 * approx_probs * logdist)
-
-            # Instead of doing the batch entropy, take entropy of each individual and then average those entropies.
-            # vector_diffs = mus.unsqueeze(1) - self.prototypes
-            # scaling = torch.exp(0.5 * logvar).unsqueeze(1) + 0.00001  # Don't want to divide by zero ever.
-            # normalized_diffs = torch.div(vector_diffs, scaling)
-            # square_distances = torch.square(normalized_diffs)
-            # normalized_dists = torch.sum(square_distances, dim=2)
-            # neg_dist = -0.5 * normalized_dists
-            # exponents = neg_dist.exp() + epsilon
-            # row_sums = torch.sum(exponents, dim=1, keepdim=True)
-            # row_probs = torch.div(exponents, row_sums)
-            # log_probs = row_probs.log()
-            # row_ents = -1 * torch.sum(torch.mul(row_probs, log_probs), dim=1)
-            # ent = torch.mean(row_ents)
-        else:  # It's fine because this will never be the case in actual training.
-            ent = 0
-
-        # vq_loss += 0.01 * ent
-        vq_loss += settings.kl_weight * ent
-        if do_print:
-            print("Ent val", ent)
-            # print("Stds", stds)
-            print("True ent", true_ent.item())
-            # if ent < true_ent:
-            #     # print("Vector diffs", vector_diffs)
-            #     # print("Scale", scaling)
-            #     # print("Normalized diffs", normalized_diffs)
-            #     print("True prior", prior)
-            #     print("Approx prob", approx_probs)
-            # print("Commitment loss", commitment_loss.item())
-            # print("Embedding loss", embedding_loss.item())
 
         # Add the residue back to the latents
         quantized_latents = latents + (quantized_latents - latents).detach()
         return quantized_latents, vq_loss
 
 
-class VQ(nn.Module):
+class VQAfter(nn.Module):
     def __init__(self, input_dim, output_dim, num_layers, num_protos, specified_tok=None, num_simultaneous_tokens=1, variational=True, num_imgs=1):
-        super(VQ, self).__init__()
+        super(VQAfter, self).__init__()
         self.input_dim = input_dim
         self.comm_dim = output_dim
         self.proto_latent_dim = int(self.comm_dim / num_simultaneous_tokens)
@@ -151,14 +91,15 @@ class VQ(nn.Module):
             x = layer(x)
             x = F.relu(x)
         if self.variational:
-            # Sample in the space and then choose the closest prototype
+            # Quantize and then sample
             # This reshaping handles the desire to have multiple tokens in a single message.
             reshaped = torch.reshape(x, (-1, self.proto_latent_dim))
-            mu = self.fc_mu(reshaped)
+            latent = self.fc_mu(reshaped)
+            mu, proto_loss = self.vq_layer(latent)
+            if self.eval_mode:
+                return torch.reshape(mu, (-1, self.comm_dim)), None, None
             logvar = self.fc_var(reshaped)
-            sample = reparameterize(mu, logvar) if not self.eval_mode else mu
-            # Quantize the vectors
-            output, proto_loss = self.vq_layer(sample, mu, logvar)
+            output = reparameterize(mu, logvar)
             # Regroup the tokens into messages, now with possibly multiple tokens.
             output = torch.reshape(output, (-1, self.comm_dim))
             relevant_mu = mu
@@ -172,7 +113,6 @@ class VQ(nn.Module):
                                 (self.prior_mu - relevant_mu) ** 2) / self.prior_logvar.exp(), dim=1), dim=0)
                 regularization_loss = torch.mean(self.prior_logvar ** 2) + torch.mean(self.prior_mu ** 2)
             total_loss = settings.kl_weight * kld_loss + proto_loss + 0.01 * regularization_loss
-            # total_loss = 0.01 * kld_loss + proto_loss + 0.01 * regularization_loss
             capacity = kld_loss
             if np.random.random() < 0.01:
                 print("KLD loss", kld_loss.item())

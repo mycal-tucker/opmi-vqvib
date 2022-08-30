@@ -6,7 +6,7 @@ from src.models.listener import Listener
 from src.models.mlp import MLP
 from src.models.team import Team
 from src.models.vq import VQ
-from src.models.vq2 import VQ2
+from src.models.vq_after import VQAfter
 import numpy as np
 from src.models.vae import VAE
 import torch
@@ -38,8 +38,8 @@ def run_trial():
     elif speaker_type == 'vq':
         speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, specified_tok=all_embeddings,
                      num_simultaneous_tokens=num_tokens, variational=variational, num_imgs=num_imgs)
-    elif speaker_type == 'vq2':
-        speaker = VQ2(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, specified_tok=all_embeddings,
+    elif speaker_type == 'vq_after':
+        speaker = VQAfter(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, specified_tok=all_embeddings,
                      num_simultaneous_tokens=num_tokens, variational=variational, num_imgs=num_imgs)
     listener = Listener(feature_len)
     decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=num_imgs)
@@ -55,10 +55,10 @@ if __name__ == '__main__':
     feature_len = 512
     settings.see_distractor = False
     num_distractors = 1
-    num_epochs = 20000  # 1000 is way too short, but it's quick for debugging.
+    num_epochs = 20000  # 1000 is way too short, but it's quick for debugging.e
     num_burnin = 10000
     val_period = 1000  # How often to test on the validation set and calculate various info metrics.
-    batch_size = 128  # TODO: try bigger batch size. I think it'll improve capacity measures.
+    batch_size = 32  # TODO: try bigger batch size. I think it'll improve capacity measures.
     comm_dim = 64
     features_filename = 'data/features_nobox.csv'
 
@@ -66,13 +66,17 @@ if __name__ == '__main__':
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # settings.kl_weight = 0.001  # For cont
     settings.kl_weight = 0.01  # For VQ 1 token, 0.001
-    settings.kl_incr = 0.000001  # For VQ 1 token 0.00001 works, but is slow.
-    # settings.kl_weight = 0.001  # For VQ 8 tokens
-    # settings.kl_incr = 0.0003  # For VQ 8 token 0.0001 is good but a little slow, but 0.001 is too fast.
+    settings.kl_incr = 0.00001  # For VQ 1 token 0.00001 works, but is slow.
+    # settings.kl_weight = 0.01  # For VQ 8 tokens
+    # settings.kl_incr = 0.0002  # For VQ 8 token 0.0001 is good but a little slow, but 0.001 is too fast.
 
     # VQ2
     # settings.kl_weight = 0.01  # Start with something like 0.01 to encourage codebook utilization.
     # settings.kl_incr = 0.000005  # 0.0001 is a little too fast
+
+    # VQ After
+    # settings.kl_weight = 0.001  # Complexity seems to stay low for kl weight of 0.01 with 1 token, so trying even lower.
+    # settings.kl_incr = 0.00001  # Everything is a guess.
 
     # Onehot
     # settings.kl_weight = 0.001
@@ -86,7 +90,7 @@ if __name__ == '__main__':
     settings.embedding_cache = {}
     settings.sample_first = True
     variational = True
-    settings.supervision_weight = 0
+    settings.supervision_weight = 0.0
     settings.hardcoded_vq = False
 
     use_embed_tokens = False
@@ -104,7 +108,7 @@ if __name__ == '__main__':
     num_prototypes = 1024
 
     starting_weight = settings.kl_weight
-    seeds = [i for i in range(0, 5)]
+    seeds = [i for i in range(0, 1)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
     for num_tokens in [1]:

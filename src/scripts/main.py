@@ -1,6 +1,7 @@
 import os
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -100,12 +101,14 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top
 
             if use_comm_idx and comm_map.get(ec_key) is None:
                 # print("Couldn't find this comm! Marking as random chance")
+                print("Using comm idx")
                 eng_correct += 0.5
                 continue
             # Convert comm id to onehot
             ec_comm = ec_comm.detach().cpu().numpy()
             relevant_comm = ec_comm
             if use_comm_idx:
+                print("Using comm idx")
                 dummy = np.zeros((1, len(comm_map.keys())))
                 dummy[0, comm_map.get(ec_key)] = 1
                 relevant_comm = dummy
@@ -277,7 +280,7 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
             else:
                 acc, recons = evaluate(model, data, eval_batch_size, vae, num_dist=num_candidates - 1)
                 # Using the embed_to_tok, map English words to tokens to see if the listener can do well.
-                # During trianing, just set to none. It's so noisy that we just run eval_trials.py for this.
+                # During training, just set to none. It's so noisy that we just run eval_trials.py for this.
                 eng_train_top_score = None
                 eng_train_syn_score = None
                 eng_val_top_score = None
@@ -365,7 +368,9 @@ def get_supervised_data(train_data, num_examples, glove_data, vae):
 
 def get_super_loss(supervised_data, speaker):
     supervision_crit = nn.MSELoss()
+    speaker.eval_mode = True
     comms, _, _ = speaker(supervised_data[0])
+    speaker.eval_mode = False
     supervised_loss = supervision_crit(comms, supervised_data[1])
     # print("Supervised loss", supervised_loss)
     return supervised_loss
@@ -374,9 +379,9 @@ def get_super_loss(supervised_data, speaker):
 def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm_dim, num_epochs=3000, batch_size=1024,
           burnin_epochs=500, val_period=200, plot_comms_flag=False, calculate_complexity=False):
     unique_topnames, _ = get_unique_labels(train_data)
-    sup_dataset = get_entry_for_labels(train_data, unique_topnames)
-    sup_dataset.reset_index(inplace=True)
-    supervised_data = get_supervised_data(sup_dataset, 1024, glove_data, vae)
+    sup_dataset = pd.concat([get_entry_for_labels(train_data, unique_topnames) for _ in range(3)])
+    sup_dataset = sup_dataset.sample(frac=1).reset_index(drop=True)  # Shuffle the data.
+    supervised_data = get_supervised_data(sup_dataset, 1000, glove_data, vae)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())

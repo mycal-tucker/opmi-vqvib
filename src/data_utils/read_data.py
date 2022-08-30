@@ -191,6 +191,7 @@ def get_glove_vectors(comm_dim):
     pca = PCA(n_components=comm_dim)
     new_data = pca.fit_transform(np_data)
     new_pd = pd.DataFrame(data=new_data, index=raw_data.index)
+    print("Glove data", new_pd)
     return new_pd
 
 
