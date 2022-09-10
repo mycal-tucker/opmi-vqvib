@@ -3,7 +3,8 @@ import src.settings as settings
 import torch
 
 
-def gen_batch(all_data, batch_size, vae=None, glove_data=None, see_distractors=False, num_dist=None, preset_targ_idx=None):
+def gen_batch(all_data, batch_size, fieldname, vae=None, glove_data=None, see_distractors=False, num_dist=None, preset_targ_idx=None):
+    assert glove_data is not None, "Relic argument allowed no glove data, but here we do want it."
     # Given the dataset, creates a batch of inputs.
     # That's:
     # 1) The speaker's observation
@@ -16,23 +17,34 @@ def gen_batch(all_data, batch_size, vae=None, glove_data=None, see_distractors=F
     embeddings = []
 
     all_features = all_data['features']
-    all_words = all_data['topname']
+    all_words = all_data[fieldname]
     if num_dist is None:
         num_dist = settings.num_distractors
     while len(labels) < batch_size:
         targ_idx = int(np.random.random() * len(all_features)) if preset_targ_idx is None else preset_targ_idx
         # Get the word embedding
-        if glove_data is not None:
-            word = all_words[targ_idx]
-            emb = get_glove_embedding(glove_data, word)
-            if emb is None:
-                if preset_targ_idx is not None:  # No embedding for the target id you want.
-                    return None, None, None, [None]
-                continue
-            emb = emb.to_numpy()
-            embeddings.append(emb)
+        word = all_words[targ_idx]
+        emb = get_glove_embedding(glove_data, word)
+        if emb is None:
+            if preset_targ_idx is not None:  # No embedding for the target id you want.
+                return None, None, None, [None]
+            continue
+        emb = emb.to_numpy()
+        embeddings.append(emb)
         targ_features = all_features[targ_idx]
-        distractor_features = [all_features[int(np.random.random() * len(all_features))] for _ in range(num_dist)]
+        distractor_features = []
+        candidate_words = set()
+        candidate_words.add(word)
+        while len(distractor_features) < num_dist:
+            dist_id = int(np.random.random() * len(all_features))
+            dist_word = all_words[dist_id]
+            if dist_word in candidate_words and settings.distinct_words:
+                continue  # Already exists, so skip
+            candidate_words.add(dist_word)
+            distractor_features.append(all_features[dist_id])
+        # if settings.distinct_words:
+        #     print("Words", candidate_words)
+        # distractor_features = [all_features[int(np.random.random() * len(all_features))] for _ in range(num_dist)]
         obs_targ_idx = int(np.random.random() * (num_dist + 1))  # Pick where to slide the target observation into.
         l_obs = np.expand_dims(np.vstack(distractor_features[:obs_targ_idx] + [targ_features] + distractor_features[obs_targ_idx:]), axis=0)
         listener_obs.append(l_obs)
@@ -50,9 +62,7 @@ def gen_batch(all_data, batch_size, vae=None, glove_data=None, see_distractors=F
 
 
 def get_unique_labels(dataset):
-    unique_topnames = set()
-    for topname in dataset['topname']:
-        unique_topnames.add(topname)
+    unique_topnames = get_unique_by_field(dataset, 'topname')
     unique_responses = set()
     for responses in dataset['responses']:
         for k in responses.keys():
@@ -60,39 +70,52 @@ def get_unique_labels(dataset):
     return unique_topnames, unique_responses
 
 
-def get_entry_for_labels(dataset, labels):
+def get_unique_by_field(dataset, fieldname):
+    uniques = set()
+    for elt in dataset[fieldname]:
+        uniques.add(elt)
+    return uniques
+
+
+def get_entry_for_labels(dataset, labels, fieldname='topname', num_repeats=1):
     rows = []
-    for label in labels:
-        matching_rows = dataset.loc[dataset['topname'] == label].index.tolist()
-        rand_idx = int(np.random.random() * len(matching_rows))
-        rows.append(matching_rows[rand_idx])
+    for _ in range(num_repeats):
+        for label in labels:
+            matching_rows = dataset.loc[dataset[fieldname] == label].index.tolist()
+            rand_idx = int(np.random.random() * len(matching_rows))
+            rows.append(matching_rows[rand_idx])
     big_data = dataset.iloc[rows]
     return big_data
 
-def get_embedding_batch(all_data, embed_data, batch_size, vae=None):
+
+def get_embedding_batch(all_data, embed_data, batch_size, fieldname, vae=None):
     all_features = all_data['features']
     features = []
     embeddings = []
     while len(features) < batch_size:
         targ_idx = int(np.random.random() * len(all_features))
         # Get the embedding for the word
-        responses = all_data['responses'][targ_idx]
-        words = []
-        probs = []
-        for k, v in responses.items():
-            parsed_word = k.split(' ')
-            if len(parsed_word) > 1:
-                # Skip "words" like "tennis player" etc. because they won't be in glove data
+        if fieldname == 'responses':
+            responses = all_data['responses'][targ_idx]
+            words = []
+            probs = []
+            for k, v in responses.items():
+                parsed_word = k.split(' ')
+                if len(parsed_word) > 1:
+                    # Skip "words" like "tennis player" etc. because they won't be in glove data
+                    continue
+                words.append(k)
+                probs.append(v)
+            if len(words) == 0:
+                # Failed to find any legal words (e.g., all like "tennis player")
                 continue
-            words.append(k)
-            probs.append(v)
-        if len(words) == 0:
-            # Failed to find any legal words (e.g., all like "tennis player")
-            continue
-        total = np.sum(probs)
-        probs = [p / total for p in probs]
-        sampled_word = np.random.choice(words, p=probs)
-        # sampled_word = words[np.argmax(probs)]
+            total = np.sum(probs)
+            probs = [p / total for p in probs]
+            sampled_word = np.random.choice(words, p=probs)
+        elif fieldname == 'vg_domain':
+            sampled_word = all_data['vg_domain'][targ_idx]
+        elif fieldname == 'vg_obj_name':
+            sampled_word = all_data['vg_obj_name'][targ_idx]
         embedding = get_glove_embedding(embed_data, sampled_word)
         if embedding is None:
             continue
@@ -108,6 +131,8 @@ def get_embedding_batch(all_data, embed_data, batch_size, vae=None):
 
 
 def get_glove_embedding(dataset, word):
+    if word == 'animals_plants':  # Gross, but important for vg_domain
+        word = 'animals'
     try:
         cached_embed = settings.embedding_cache.get(word)
         if cached_embed is not None:

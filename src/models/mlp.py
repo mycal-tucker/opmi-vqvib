@@ -45,44 +45,42 @@ class MLP(nn.Module):
             x = layer(x)
             if i != len(self.layers) - 1:
                 x = F.relu(x)
-        if self.variational:
-            if not self.onehot:
-                mu = self.fc_mu(x)
-                logvar = self.fc_var(x)
-                output = reparameterize(mu, logvar) if not self.eval_mode else mu
-                # For a fixed, unit gaussian
-                if not settings.learned_marginal:
-                    capacity = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim=1), dim=0)
-                else:  # For a learned marginal
-                    capacity = torch.mean(0.5 * torch.sum(
-                        self.prior_logvar - logvar - 1 + logvar.exp() / self.prior_logvar.exp() + (
-                                (self.prior_mu - mu) ** 2) / self.prior_logvar.exp(), dim=1), dim=0)
-            else:
-                # Create a onehot for each of the simultaneous tokens
-                # Reshape the latent into the right number
-                reshaped = torch.reshape(x, (-1, self.onehot_output_dim))
-                output, logprobs = gumbel_softmax(reshaped, hard=True, return_dist=True)
-                prior = torch.ones_like(logprobs) / logprobs.shape[1]  # Assume uniform prior for now.
-                # The order of the arguments matters a lot.
-                capacity = self.disc_loss_fn(logprobs, prior)
-                # Now regroup into a single message
-                output = torch.reshape(output, (-1, self.output_dim))
-
-                # Also encourage unconditional entropy to boost number of vocab words.
-                # unconditional = torch.mean(output, 0)
-                # unconditional += 0.0001
-                # unconditional = unconditional / torch.sum(unconditional)
-                # uncond_ent = self.disc_loss_fn(unconditional.log(), torch.ones_like(unconditional) / len(unconditional))
-                # if np.random.random() < 0.01:
-                #     print("uncond_ent", uncond_ent)
-            network_loss = settings.kl_weight * capacity  # - 1.0 * uncond_ent
+        if not self.onehot:
+            mu = self.fc_mu(x)
+            logvar = self.fc_var(x)
+            output = reparameterize(mu, logvar) if not self.eval_mode else mu
+            # For a fixed, unit gaussian
+            if not settings.learned_marginal:
+                capacity = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim=1), dim=0)
+            else:  # For a learned marginal
+                capacity = torch.mean(0.5 * torch.sum(
+                    self.prior_logvar - logvar - 1 + logvar.exp() / self.prior_logvar.exp() + (
+                            (self.prior_mu - mu) ** 2) / self.prior_logvar.exp(), dim=1), dim=0)
         else:
-            if not self.onehot:
-                output = x
-            else:
-                output = gumbel_softmax(x, hard=True)
-            capacity = torch.tensor(0)
-            network_loss = torch.tensor(0)
+            # Create a onehot for each of the simultaneous tokens
+            # Reshape the latent into the right number
+            reshaped = torch.reshape(x, (-1, self.onehot_output_dim))
+            # temperature = 20 * (1 - (settings.epoch / 80000))
+            temperature = 20
+            # temperature = 1
+            output, logprobs = gumbel_softmax(reshaped, hard=True, return_dist=True, temperature=temperature)
+            prior = torch.mean(logprobs.exp() + 0.000001, dim=0)
+            prior = prior / torch.sum(prior)
+            # prior = torch.ones_like(logprobs) / logprobs.shape[1]  # Assume uniform prior for now.
+            # The order of the arguments matters a lot.
+            unsqueezed = prior.unsqueeze(0).repeat(logprobs.shape[0], 1)
+            capacity = self.disc_loss_fn(logprobs, unsqueezed)
+            # Now regroup into a single message
+            output = torch.reshape(output, (-1, self.output_dim))
+
+            # Also encourage unconditional entropy to boost number of vocab words.
+            uncond_ent = torch.sum(-1 * prior * prior.log())
+            # if np.random.random() < 0.01:
+            #     print("Entropy", uncond_ent)
+            #     print("Temperature", temperature)
+        network_loss = settings.kl_weight * capacity
+        if settings.epoch > 0:  # Yes for alpha 0
+            network_loss -= 0.001 * uncond_ent
         return output, network_loss, capacity
 
     def get_token_dist(self, x):

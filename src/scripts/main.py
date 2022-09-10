@@ -22,7 +22,7 @@ from src.utils.plotting import plot_metrics, plot_naming, plot_scatter
 from src.utils.performance_metrics import PerformanceMetrics
 
 
-def evaluate(model, dataset, batch_size, vae, num_dist=None):
+def evaluate(model, dataset, batch_size, vae, glove_data, fieldname, num_dist=None):
     model.eval()
     num_test_batches = 10
     num_correct = 0
@@ -30,7 +30,7 @@ def evaluate(model, dataset, batch_size, vae, num_dist=None):
     num_total = 0
     for _ in range(num_test_batches):
         with torch.no_grad():
-            speaker_obs, listener_obs, labels, _ = gen_batch(dataset, batch_size, vae=vae, see_distractors=settings.see_distractor, num_dist=num_dist)
+            speaker_obs, listener_obs, labels, _ = gen_batch(dataset, batch_size, fieldname, vae=vae, glove_data=glove_data, see_distractors=settings.see_distractor, num_dist=num_dist)
             outputs, _, _, recons = model(speaker_obs, listener_obs)
             recons = torch.squeeze(recons, dim=1)
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)
@@ -44,21 +44,25 @@ def evaluate(model, dataset, batch_size, vae, num_dist=None):
     return acc, total_recons_loss
 
 
-def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top=True, num_dist=None, eng_dec=None, eng_list=None,
+def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, fieldname, use_top=True, num_dist=None, eng_dec=None, eng_list=None,
                           tok_to_embed=None, use_comm_idx=False, comm_map=None):
-    topwords = dataset['topname']
+    topwords = dataset[fieldname]
     responses = dataset['responses']
     model.eval()
     num_nosnap_correct = 0
     num_snap_correct = 0
     num_total = 0
+    num_unmatched = 0
     eng_correct = 0
     # eval_dataset_size = len(dataset)
     eval_dataset_size = 1000
     print("Evaluating English performance on", eval_dataset_size, "examples")
+    # TODO: batching this stuff could make things way faster. I am pretty confused by why it's so bad.
     for targ_idx in range(eval_dataset_size):
-        speaker_obs, listener_obs, labels, _ = gen_batch(dataset, 1, vae=vae, see_distractors=settings.see_distractor,
+        speaker_obs, listener_obs, labels, _ = gen_batch(dataset, 1, fieldname, vae=vae, see_distractors=settings.see_distractor, glove_data=glove_data,
                                             num_dist=num_dist, preset_targ_idx=targ_idx)
+        if labels is None:  # If there was no glove embedding for that word.
+            continue
         labels = labels.cpu().numpy()
         # Can pick just the topname, or one of the random responses.
         topword = topwords[targ_idx]
@@ -100,29 +104,24 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, use_top
             ec_key = tuple(np.round(ec_comm.detach().cpu().squeeze(dim=0).numpy(), 3))
 
             if use_comm_idx and comm_map.get(ec_key) is None:
-                # print("Couldn't find this comm! Marking as random chance")
-                print("Using comm idx")
+                # print("Using comm idx but couldn't find entry")
+                num_unmatched += 1
                 eng_correct += 0.5
                 continue
             # Convert comm id to onehot
             ec_comm = ec_comm.detach().cpu().numpy()
-            relevant_comm = ec_comm
-            if use_comm_idx:
-                print("Using comm idx")
-                dummy = np.zeros((1, len(comm_map.keys())))
-                dummy[0, comm_map.get(ec_key)] = 1
-                relevant_comm = dummy
-            eng_comm = tok_to_embed.predict(relevant_comm)
-            eng_comm = torch.Tensor(eng_comm).to(settings.device)
-            # TODO: snap to best english embedding?
+            if not use_comm_idx:
+                eng_comm = tok_to_embed.predict(ec_comm)
+                eng_comm = torch.Tensor(eng_comm).to(settings.device)
+            else:
+                # Just look up the English embedding for the most common english word associated with this ec comm.
+                word = comm_map.get(ec_key)
+                eng_comm = torch.Tensor(get_glove_embedding(glove_data, word).to_numpy()).to(settings.device)
             recons = eng_dec(eng_comm)
-            # Log the MSE just for fun
-            # mse = torch.mean((speaker_obs - recons) ** 2)
-            # print("Recons error", mse)
-            # prediction = eng_list(recons, listener_obs)
-            prediction = model.listener(recons, listener_obs)
+            prediction = eng_list(recons, listener_obs)
             pred_label = np.argmax(prediction.detach().cpu().numpy(), axis=1)
             eng_correct += np.sum(pred_label == labels)
+    print("Percent unmatched ec comms", num_unmatched / num_total)
     return num_nosnap_correct / num_total, num_snap_correct / num_total, eng_correct / num_total
 
 
@@ -155,15 +154,14 @@ def plot_comms(model, dataset, basepath):
     plot_naming(regrouped_data, viz_method='tsne', labels=plot_labels, savepath=basepath + 'training_tsne')
 
 
-def get_embedding_alignment(model, dataset, glove_data, use_comm_idx=False):
+def get_embedding_alignment(model, dataset, glove_data, fieldname):
     num_tests = 1
     comms = []
     embeddings = []
     features = []
-    comm_ids = []
     comm_to_id = {}
     max_num_align_data = 1000   # FIXME
-    for f, word in zip(dataset['features'], dataset['topname']):
+    for f, word in zip(dataset['features'], dataset[fieldname]):
         speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
         speaker_obs = torch.unsqueeze(speaker_obs, 0)
         with torch.no_grad():
@@ -173,34 +171,28 @@ def get_embedding_alignment(model, dataset, glove_data, use_comm_idx=False):
             embedding = get_glove_embedding(glove_data, word).to_numpy()
         except AttributeError:
             continue
-        # comm_id = model.speaker.get_comm_id(comm).detach().cpu().numpy()
-        # comm_ids.append(comm_id)
         np_comm = np.mean(comm.detach().cpu().numpy(), axis=0)
         comms.append(np_comm)
 
         dict_comm = tuple(np.round(np_comm, 3))
-        matching_id = comm_to_id.get(dict_comm)
-        if matching_id is None:
-            matching_id = len(comm_to_id.keys())
-            comm_to_id[dict_comm] = matching_id
-        comm_ids.append(matching_id)
+        matching_entries = comm_to_id.get(dict_comm)
+        if matching_entries is None:
+            matching_entries = {word: 1}
+            comm_to_id[dict_comm] = matching_entries
+        else:
+            for_word = matching_entries.get(word)
+            if for_word is None:
+                matching_entries[word] = 1
+            else:
+                matching_entries[word] += 1
 
         embeddings.append(embedding)
         features.append(np.array(f))
         if len(embeddings) > max_num_align_data:
             print("Breaking after", len(embeddings), "examples for word alignment")
             break
-
     comms = np.vstack(comms)
-    # comm_ids = np.vstack(comm_ids)
-    # relevant_comms = comm_ids if use_comm_idx else comms
-
     relevant_comms = comms
-    if use_comm_idx:
-        # Convert to onehot
-        relevant_comms = np.zeros((len(comm_ids), len(comm_to_id.keys())))
-        for i, c_id in enumerate(comm_ids):
-            relevant_comms[i, c_id] = 1
     embeddings = np.vstack(embeddings)
     # Now learn two linear regressions to map to/from tokens and word embeddings.
     reg1 = LinearRegression()
@@ -215,36 +207,23 @@ def get_embedding_alignment(model, dataset, glove_data, use_comm_idx=False):
     # reg2.fit(embeddings, embeddings)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
     print("Found", len(comm_to_id), "unique comm vectors!")
     # Gross. Instead of regression score, pass back the number of unique vectors
-    return reg1, reg2, tok_to_embed_r2, len(comm_to_id), comm_to_id
 
+    # Turn comm_map into comm to most common associated
+    comm_modes = {}
+    for ec_comm, word_counts in comm_to_id.items():
+        best_word = None
+        max_count = 0
+        for word, count in word_counts.items():
+            if count > max_count:
+                max_count = count
+                best_word = word
+        comm_modes[ec_comm] = best_word
 
-# Manually calculate the complexity of communication by sampling some inputs and comparing the conditional communication
-# to the marginal communication.
-def get_probs(speaker, dataset):
-    num_samples = 1000
-    w_m = np.zeros((num_samples, speaker.num_tokens))
-    for i in range(num_samples):
-        speaker_obs, _, _, _ = gen_batch(dataset, batch_size=1)
-        with torch.no_grad():
-            likelihoods = speaker.get_token_dist(speaker_obs)
-        w_m[i] = likelihoods
-    # Calculate the divergence from the marginal over tokens. Here we just calculate the marginal
-    # from observations.
-    marginal = np.average(w_m, axis=0)
-    complexities = []
-    for likelihood in w_m:
-        summed = 0
-        for l, p in zip(likelihood, marginal):
-            if l == 0:
-                continue
-            summed += l * (np.log(l) - np.log(p))
-        complexities.append(summed)
-    comp = np.average(complexities)  # Note that this is in nats (not bits)
-    print("Sampled communication complexity", comp)
+    return reg1, reg2, tok_to_embed_r2, len(comm_to_id), comm_modes
 
 
 def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data, num_cand_to_metrics, savepath,
-               epoch, calculate_complexity=False, plot_comms_flag=False, alignment_dataset=None, save_model=True):
+               epoch, fieldname, calculate_complexity=False, plot_comms_flag=False, alignment_dataset=None, save_model=True):
     # Create a directory to save information, models, etc.
     basepath = savepath + str(epoch) + '/'
     if not os.path.exists(basepath):
@@ -254,7 +233,7 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
     # get_probs(model.speaker, train_data)
     # Or we can use MINE to estimate complexity and informativeness.
     if calculate_complexity:
-        train_complexity = get_info(model, train_data, targ_dim=comm_dim, num_epochs=200, comm_targ=True)
+        train_complexity = get_info(model, train_data, targ_dim=comm_dim, glove_data=glove_data, num_epochs=200)
         # val_complexity = get_info(model, val_features, targ_dim=comm_dim, comm_targ=True)
         val_complexity = None
         print("Train complexity", train_complexity)
@@ -264,76 +243,43 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
         val_complexity = None
     # And compare to english word embeddings (doesn't depend on number of distractors)
     align_data = train_data if alignment_dataset is None else alignment_dataset
-    tok_to_embed, embed_to_tok, tokr2, embr2, _ = get_embedding_alignment(model, align_data, glove_data)
+    tok_to_embed, embed_to_tok, tokr2, embr2, _ = get_embedding_alignment(model, align_data, glove_data, fieldname=fieldname)
     eval_batch_size = 256
     val_is_train = len(train_data) == len(val_data)  # Not actually true, but close enough
     if val_is_train:
         print("WARNING: ASSUMING VALIDATION AND TRAIN ARE SAME")
 
+    distinct_val = settings.distinct_words
     complexities = [train_complexity, val_complexity]
-    for feature_idx, data in enumerate([train_data, val_data]):
-        if feature_idx == 1 and val_is_train:
-            pass
-        for num_candidates in num_cand_to_metrics.keys():
+    for set_distinction in [True, False]:
+        for feature_idx, data in enumerate([train_data, val_data]):
             if feature_idx == 1 and val_is_train:
-                pass  # Just save the values from last time.
-            else:
-                acc, recons = evaluate(model, data, eval_batch_size, vae, num_dist=num_candidates - 1)
-                # Using the embed_to_tok, map English words to tokens to see if the listener can do well.
-                # During training, just set to none. It's so noisy that we just run eval_trials.py for this.
-                eng_train_top_score = None
-                eng_train_syn_score = None
-                eng_val_top_score = None
-                eng_val_syn_score = None
-                # eng_train_top_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data,
-                #                                             use_top=True,
-                #                                             num_dist=num_candidates - 1)
-                # print("English topname train accuracy", eng_train_top_score)
-                # eng_train_syn_score = evaluate_with_english(model, train_data, vae, embed_to_tok, glove_data,
-                #                                             use_top=False,
-                #                                             num_dist=num_candidates - 1)
-                # print("English synonym train accuracy", eng_train_syn_score)
-                # eng_val_top_score = eng_train_top_score if val_is_train else evaluate_with_english(model, val_data, vae,
-                #                                                                                    embed_to_tok,
-                #                                                                                    glove_data,
-                #                                                                                    use_top=True,
-                #                                                                                    num_dist=num_candidates - 1)
-                # print("English topname val accuracy", eng_val_top_score)
-                # eng_val_syn_score = eng_train_syn_score if val_is_train else evaluate_with_english(model, val_data, vae,
-                #                                                                                    embed_to_tok,
-                #                                                                                    glove_data,
-                #                                                                                    use_top=False,
-                #                                                                                    num_dist=num_candidates - 1)
-                # print("English synonym val accuracy", eng_val_syn_score)
-            relevant_metrics = num_cand_to_metrics.get(num_candidates)[feature_idx]
-            relevant_metrics.add_data(epoch, complexities[feature_idx], -1 * recons, acc, settings.kl_weight,
-                                      tokr2, embr2, eng_train_top_score, eng_train_syn_score, eng_val_top_score, eng_val_syn_score)
+                pass
+            for num_candidates in num_cand_to_metrics.get(set_distinction).keys():
+                if feature_idx == 1 and val_is_train:
+                    pass  # Just save the values from last time.
+                else:
+                    settings.distinct_words = set_distinction
+                    acc, recons = evaluate(model, data, eval_batch_size, vae, glove_data, fieldname=fieldname, num_dist=num_candidates - 1)
+                relevant_metrics = num_cand_to_metrics.get(set_distinction).get(num_candidates)[feature_idx]
+                relevant_metrics.add_data(epoch, complexities[feature_idx], -1 * recons, acc, settings.kl_weight,
+                                          tokr2, embr2)
+    settings.distinct_words = distinct_val
     # Plot some of the metrics for online visualization
     comm_accs = []
-    top_eng_scores = []
-    syn_eng_scores = []
-    top_val_eng_scores = []
-    syn_val_eng_scores = []
     regressions = []
     labels = []
     epoch_idxs = None
+    plot_metric_data = num_cand_to_metrics.get(False)
     for feature_idx, label in enumerate(['train', 'val']):
-        for num_candidates in sorted(num_cand_to_metrics.keys()):
-            comm_accs.append(num_cand_to_metrics.get(num_candidates)[feature_idx].comm_accs)
-            top_eng_scores.append(num_cand_to_metrics.get(num_candidates)[feature_idx].top_eng_acc)
-            syn_eng_scores.append(num_cand_to_metrics.get(num_candidates)[feature_idx].syn_eng_acc)
-            top_val_eng_scores.append(num_cand_to_metrics.get(num_candidates)[feature_idx].top_val_eng_acc)
-            syn_val_eng_scores.append(num_cand_to_metrics.get(num_candidates)[feature_idx].syn_val_eng_acc)
-            regressions.append(num_cand_to_metrics.get(num_candidates)[feature_idx].embed_r2)
+        for num_candidates in sorted(plot_metric_data.keys()):
+            comm_accs.append(plot_metric_data.get(num_candidates)[feature_idx].comm_accs)
+            regressions.append(plot_metric_data.get(num_candidates)[feature_idx].embed_r2)
             labels.append(" ".join([label, str(num_candidates), "utility"]))
             if epoch_idxs is None:
-                epoch_idxs = num_cand_to_metrics.get(num_candidates)[feature_idx].epoch_idxs
+                epoch_idxs = plot_metric_data.get(num_candidates)[feature_idx].epoch_idxs
     plot_metrics(comm_accs, labels, epoch_idxs, basepath=basepath)
     plot_metrics(regressions, ['r2 score'], epoch_idxs, basepath=basepath + 'regression_')
-    plot_metrics(top_eng_scores, ['top eng score'], epoch_idxs, basepath=basepath + 'top_eng_')
-    plot_metrics(syn_eng_scores, ['syn eng score'], epoch_idxs, basepath=basepath + 'syn_eng_')
-    plot_metrics(top_val_eng_scores, ['top val eng score'], epoch_idxs, basepath=basepath + 'top_val_eng_')
-    plot_metrics(syn_val_eng_scores, ['syn val eng score'], epoch_idxs, basepath=basepath + 'syn_val_eng_')
     # Visualize some of the communication
     try:
         if plot_comms_flag:
@@ -342,9 +288,10 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
         print("Can't plot comms for whatever reason (e.g., continuous communication makes categorizing hard)")
     # Save the model and metrics to files.
     for feature_idx, label in enumerate(['train', 'val']):
-        for num_candidates in sorted(num_cand_to_metrics.keys()):
-            metric = num_cand_to_metrics.get(num_candidates)[feature_idx]
-            metric.to_file(basepath + "_".join([label, str(num_candidates), "metrics"]))
+        for set_distinction in num_cand_to_metrics.keys():
+            for num_candidates in sorted(num_cand_to_metrics.get(set_distinction).keys()):
+                metric = num_cand_to_metrics.get(set_distinction).get(num_candidates)[feature_idx]
+                metric.to_file(basepath + "_".join([label, str(set_distinction), str(num_candidates), "metrics"]))
     if not save_model:
         return
     torch.save(model.state_dict(), basepath + 'model.pt')
@@ -357,7 +304,8 @@ def get_supervised_data(train_data, num_examples, glove_data, vae):
     for i in range(len(train_data)):
         if len(embs) == num_examples:
             break
-        obs, _, _, emb = gen_batch(train_data, 1, glove_data=glove_data, vae=vae, preset_targ_idx=i)
+        # Fieldname doesn't matter if only doing things for the listener
+        obs, _, _, emb = gen_batch(train_data, 1, fieldname='topname', glove_data=glove_data, vae=vae, num_dist=0, preset_targ_idx=i)
         if emb[0] is not None:  # It's a list
             embs.append(emb)
             speaker_obs.append(obs.cpu())  # Put on the cpu to get into numpy for moving. Awkward, I know, but whatever.
@@ -376,26 +324,29 @@ def get_super_loss(supervised_data, speaker):
     return supervised_loss
 
 
-def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm_dim, num_epochs=3000, batch_size=1024,
+def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm_dim, fieldname, num_epochs=3000, batch_size=1024,
           burnin_epochs=500, val_period=200, plot_comms_flag=False, calculate_complexity=False):
     unique_topnames, _ = get_unique_labels(train_data)
     sup_dataset = pd.concat([get_entry_for_labels(train_data, unique_topnames) for _ in range(3)])
     sup_dataset = sup_dataset.sample(frac=1).reset_index(drop=True)  # Shuffle the data.
-    supervised_data = get_supervised_data(sup_dataset, 1000, glove_data, vae)
+    supervised_data = get_supervised_data(sup_dataset, 2, glove_data, vae)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)  # 0.0001 is good for no recons, or for onehot things.
+    # optimizer = optim.Adam(model.parameters(), lr=0.001)  # 0.001 is good for alpha 10 (and is the default)
     running_acc = 0
     running_mse = 0
-    num_cand_to_metrics = {2: [], 8: [], 16: []}
-    for empty_list in num_cand_to_metrics.values():
-        empty_list.extend([PerformanceMetrics(), PerformanceMetrics()])  # Train metrics, validation metrics
+    num_cand_to_metrics = {True: {2: [], 16: [], 32: []},  # Don't try many distractors when
+                           False: {2: [], 16: [], 32: []}}
+    for set_distinct in [True, False]:
+        for empty_list in num_cand_to_metrics.get(set_distinct).values():
+            empty_list.extend([PerformanceMetrics(), PerformanceMetrics()])  # Train metrics, validation metrics
     settings.epoch = 0
     for epoch in range(num_epochs):
         settings.epoch += 1
         if epoch > burnin_epochs:
             settings.kl_weight += settings.kl_incr
-        speaker_obs, listener_obs, labels, _ = gen_batch(train_data, batch_size, vae=vae, see_distractors=settings.see_distractor)
+        speaker_obs, listener_obs, labels, _ = gen_batch(train_data, batch_size, fieldname, vae=vae, glove_data=glove_data, see_distractors=settings.see_distractor)
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
 
@@ -429,10 +380,8 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
             print("Supervised loss", supervised_loss)
 
         if epoch % val_period == val_period - 1:
-        # if epoch > burnin_epochs and 0.17 < running_mse < 0.22 and np.random.random() < 0.05:
             eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data, num_cand_to_metrics,
-                       savepath, epoch, calculate_complexity=calculate_complexity, plot_comms_flag=plot_comms_flag)
-
+                       savepath, epoch, fieldname, calculate_complexity=calculate_complexity, plot_comms_flag=plot_comms_flag)
 
 def run():
     num_imgs = 1 if not settings.see_distractor else (num_distractors + 1)

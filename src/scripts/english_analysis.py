@@ -20,7 +20,7 @@ def train(data, model):
     log_data = []
     for epoch in range(num_epochs):
         print("Epoch", epoch, "of", num_epochs)
-        features, embeddings = get_embedding_batch(data, glove_data, batch_size, vae)
+        features, embeddings = get_embedding_batch(data, glove_data, batch_size, fieldname=fieldname, vae=vae)
         optimizer.zero_grad()
         recons = model(embeddings)
         recons = torch.squeeze(recons, dim=1)
@@ -37,7 +37,7 @@ def train(data, model):
     num_eval_epochs = 20
     for epoch in range(num_eval_epochs):
         print("Eval epoch", epoch, "of", num_eval_epochs)
-        features, embeddings = get_embedding_batch(data, glove_data, batch_size, vae)
+        features, embeddings = get_embedding_batch(data, glove_data, batch_size, fieldname=fieldname, vae=vae)
         with torch.no_grad():
             recons = model(embeddings)
             recons = torch.squeeze(recons, dim=1)
@@ -52,7 +52,7 @@ def get_complexity(data):
     optimizer = optim.Adam(mine_net.parameters())
     comps = []
     for epoch in range(3000):
-        features, embeddings = get_embedding_batch(data, glove_data, batch_size, vae)
+        features, embeddings = get_embedding_batch(data, glove_data, batch_size, fieldname=fieldname, vae=vae)
         emb_shuffled = torch.Tensor(np.random.permutation(embeddings.cpu().numpy())).to(settings.device)
         optimizer.zero_grad()
         pred_xy = mine_net(features, embeddings)
@@ -62,11 +62,13 @@ def get_complexity(data):
         loss.backward()
         optimizer.step()
         comps.append(ret.item())
+        if epoch % 100 == 0:
+            print(ret)
     # Now evaluate
     summed_loss = 0
     num_eval_epochs = 20
     for epoch in range(num_eval_epochs):
-        features, embeddings = get_embedding_batch(data, glove_data, batch_size, vae)
+        features, embeddings = get_embedding_batch(data, glove_data, batch_size, fieldname=fieldname, vae=vae)
         emb_shuffled = torch.Tensor(np.random.permutation(embeddings.cpu().numpy())).to(settings.device)
         with torch.no_grad():
             pred_xy = mine_net(features, embeddings)
@@ -93,7 +95,7 @@ def train_listener(data):
             print("Epoch", epoch)
             print("Running acc", running_acc)
             print("Running mse", running_mse)
-        speaker_obs, listener_obs, labels, embeddings = gen_batch(data, batch_size, vae=vae, glove_data=glove_data,
+        speaker_obs, listener_obs, labels, embeddings = gen_batch(data, batch_size, fieldname='vg_domain', vae=vae, glove_data=glove_data,
                                                          see_distractors=settings.see_distractor)
         optimizer.zero_grad()
         embs = torch.Tensor(np.vstack(embeddings))
@@ -110,25 +112,32 @@ def train_listener(data):
         num_total = pred_labels.size
         running_acc = running_acc * 0.95 + 0.05 * num_correct / num_total
         running_mse = running_mse * 0.95 + 0.05 * recons_loss.item()
-    torch.save(dec, 'english_dec64.pt')
-    torch.save(listener, 'english_list64.pt')
+    if fieldname == 'vg_domain':
+        torch.save(dec, 'english_vg_dec64.pt')
+        torch.save(listener, 'english_vg_list64.pt')
+    else:
+        torch.save(dec, 'english_dec64.pt')
+        torch.save(listener, 'english_list64.pt')
+
 
 
 def run():
     train_data = get_feature_data(features_filename)
     # Calculate complexity
-    # complexity, training_log = get_complexity(train_data)
-    # print("Complexity", complexity)
-    # plt.plot(training_log)
-    # plt.xlabel("Training epoch")
-    # plt.ylabel("Complexity")
-    # plt.show()
+    settings.distinct_words = False
+    complexity, training_log = get_complexity(train_data)
+    print("Complexity", complexity)
+    plt.plot(training_log)
+    plt.xlabel("Training epoch")
+    plt.ylabel("Complexity")
+    plt.show()
     # Calculate informativeness via an autoencoder
-    model = Decoder(comm_dim, 512, num_layers=3)
-    model.to(settings.device)
-    train(train_data, model)
-    torch.save(model, 'english64.pt')
+    # model = Decoder(comm_dim, 512, num_layers=3)
+    # model.to(settings.device)
+    # train(train_data, model)
+    # torch.save(model, 'english64.pt')
     # Calculate utility via a decoder and listener
+    # settings.distinct_words = True
     # train_listener(train_data)
 
 
@@ -137,6 +146,8 @@ if __name__ == '__main__':
     comm_dim = 64  # Align with glove embedding size
     num_epochs = 3000
     batch_size = 256
+    # fieldname = 'vg_domain'
+    fieldname = 'vg_obj_name'
     # settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.device = 'cpu'
     glove_data = get_glove_vectors(comm_dim)

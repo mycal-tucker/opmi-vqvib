@@ -14,7 +14,7 @@ def run():
     optimizer = optim.Adam(model.parameters())
     for epoch in range(num_epochs):
         print("Epoch", epoch, "of", num_epochs)
-        features, _, _, _ = gen_batch(train_data, batch_size)
+        features, _, _, _ = gen_batch(train_data, batch_size, fieldname='topname')  # Fieldname doesn't matter
         optimizer.zero_grad()
         reconstruction, loss = model(features)
         loss.backward()

@@ -25,18 +25,15 @@ class Net(nn.Module):
         return output
 
 
-def get_info(model, dataset, targ_dim, comm_targ=False, num_epochs=200, batch_size=1024):
+def get_info(model, dataset, targ_dim, glove_data=None, num_epochs=200, batch_size=1024):
     # Define a network that takes in the two variables to calculate the MI of.
     mine_net = Net(512, targ_dim)
     mine_net.to(settings.device)
     optimizer = optim.Adam(mine_net.parameters())
     for epoch in range(num_epochs):
-        speaker_obs, listener_obs, labels, _ = gen_batch(dataset, batch_size)
+        speaker_obs, _, _, _ = gen_batch(dataset, batch_size, fieldname='topname', glove_data=glove_data)
         with torch.no_grad():
-            if comm_targ:
-                targ_var, _, _ = model.speaker(speaker_obs)  # Communication
-            else:
-                _, _, _, targ_var = model(speaker_obs, listener_obs)  # Reconstruction
+            targ_var, _, _ = model.speaker(speaker_obs)  # Communication
         # Shuffle the target variable so we can get a marginal of sorts.
         targ_shuffle = torch.Tensor(np.random.permutation(targ_var.cpu().numpy())).to(settings.device)
         optimizer.zero_grad()
@@ -51,12 +48,9 @@ def get_info(model, dataset, targ_dim, comm_targ=False, num_epochs=200, batch_si
     summed_loss = 0
     num_eval_epochs = 20
     for epoch in range(num_eval_epochs):
-        speaker_obs, listener_obs, labels, _ = gen_batch(dataset, 1024)
+        speaker_obs, _, _, _ = gen_batch(dataset, 1024, fieldname='topname', glove_data=glove_data)
         with torch.no_grad():
-            if comm_targ:
-                targ_var, _, _ = model.speaker(speaker_obs)  # Communication
-            else:
-                _, _, _, targ_var = model(speaker_obs, listener_obs)  # Reconstruction
+            targ_var, _, _ = model.speaker(speaker_obs)  # Communication
         targ_shuffle = torch.Tensor(np.random.permutation(targ_var.cpu().numpy())).to(settings.device)
         optimizer.zero_grad()
 

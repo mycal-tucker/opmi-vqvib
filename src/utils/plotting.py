@@ -35,17 +35,23 @@ def plot_scatter(metrics, labels, savepath=None):
     plt.close()
 
 
-def plot_multi_trials(multi_metrics, series_labels, sizes, file_root=None):
+def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, filename=None):
     fig, ax = plt.subplots()
+    idx = 0
     for metric_x, metric_y, label, s in zip(multi_metrics[0], multi_metrics[1], series_labels, sizes):
+        yerr = multi_metrics[2][idx] if len(multi_metrics) == 3 else None
         pcm = ax.scatter(metric_x, metric_y, s=s, label=label)
+        if yerr is not None:
+            plt.errorbar(metric_x, metric_y, yerr=yerr, fmt='o')
+        idx += 1
     plt.xlabel('Complexity (nats)')
-    plt.ylabel('Negative MSE')
+    plt.ylabel(ylabel)
     plt.legend()
     plt.tight_layout()
-    if file_root is not None:
-        plt.savefig(file_root + 'info_plane_scatter.png')
-    # plt.show()
+    if filename is not None:
+        plt.savefig(filename)
+    else:
+        plt.show()
     plt.close()
 
 
@@ -71,7 +77,15 @@ def plot_multi_metrics(multi_metrics, labels=None, file_root=''):  # TODO: refac
                 plt.plot(epochs, accs, color, linestyle='dashed', alpha=0.2)
                 overalls[eval_idx].append(accs)
             mean_overall = np.median(np.vstack(overalls[eval_idx]), axis=0)
+            std = np.std(np.vstack(overalls[eval_idx]), axis=0)
+            np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
+            # print("Epoch", epochs)
+            print("Median overall", mean_overall)
+            print("Std overall", std)
             plt.plot(epochs, mean_overall, color, linestyle=linestyle, label=labels[eval_idx])
+            print('\n\n\n')
+            for a, b, c in zip(epochs, mean_overall, std):
+                print(' '.join([str(np.round(a, 3)), str(np.round(b, 3)), str(np.round(c / np.sqrt(5), 3))]))
     plt.legend()
     plt.xlabel('Training epoch')
     plt.ylabel('Communicative accuracy (%)')

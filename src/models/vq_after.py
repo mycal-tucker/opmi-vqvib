@@ -114,8 +114,8 @@ class VQAfter(nn.Module):
                 regularization_loss = torch.mean(self.prior_logvar ** 2) + torch.mean(self.prior_mu ** 2)
             total_loss = settings.kl_weight * kld_loss + proto_loss + 0.01 * regularization_loss
             capacity = kld_loss
-            if np.random.random() < 0.01:
-                print("KLD loss", kld_loss.item())
+            # if np.random.random() < 0.01:
+            #     print("KLD loss", kld_loss.item())
         else:
             x = self.fc_mu(x)
             output, total_loss = self.vq_layer(x)

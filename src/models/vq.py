@@ -8,7 +8,7 @@ from src.models.network_utils import reparameterize, gumbel_softmax
 
 
 class VQLayer(nn.Module):
-    def __init__(self, num_protos, latent_dim, init_vectors=None, beta=0.25):
+    def __init__(self, num_protos, latent_dim, init_vectors=None, beta=0.01):
         super(VQLayer, self).__init__()
         self.num_protos = num_protos
         self.latent_dim = latent_dim
@@ -20,7 +20,7 @@ class VQLayer(nn.Module):
             self.prototypes.data = torch.from_numpy(init_vectors).type(torch.FloatTensor)
             self.prototypes.requires_grad = not settings.hardcoded_vq
         else:
-            self.prototypes.data.uniform_(-1/ self.num_protos, 1/self.num_protos)
+            self.prototypes.data.uniform_(-1 / self.num_protos, 1 / self.num_protos)
 
     def forward(self, latents, mus=None, logvar=None):
         dists_to_protos = torch.sum(latents ** 2, dim=1, keepdim=True) + \
@@ -30,13 +30,7 @@ class VQLayer(nn.Module):
         encoding_one_hot = torch.zeros(closest_protos.size(0), self.num_protos).to(settings.device)
         encoding_one_hot.scatter_(1, closest_protos, 1)
         # encoding_one_hot = gumbel_softmax(-dists_to_protos, hard=True, temperature=0.1)
-        epsilon = 0.00000001
-        prior = torch.mean(encoding_one_hot + epsilon, dim=0)
-        normalizer = torch.sum(prior)
-        prior = prior / normalizer
-        true_ent = torch.sum(-1 * prior * prior.log())
-
-        do_print = np.random.random() < 0.01
+        do_print = np.random.random() < 0.00
 
         quantized_latents = torch.matmul(encoding_one_hot, self.prototypes)
 
@@ -48,17 +42,24 @@ class VQLayer(nn.Module):
             commitment_loss = F.mse_loss(quantized_latents.detach(), mus)
             embedding_loss = F.mse_loss(quantized_latents, mus.detach())
 
-        vq_loss = 1.0 * (commitment_loss * self.beta + 1.0 * embedding_loss)
+        # vq_loss = 1.0 * (commitment_loss * self.beta + 1.0 * embedding_loss)  # Lower VQ loss term seems useful when there's no autoencoding.
+        vq_loss = 1.0 * (commitment_loss * self.beta + 1.0 * embedding_loss)  # Weight of 0.01 for informativeness 0 seems best.
 
         # Compute the entropy of the distribution for which prototypes are used. Uses a differentiable approximation
         # for the distributions.
-        if logvar is not None:
+        if logvar is not None and settings.entropy_weight != 0:
+            epsilon = 0.00000001
+            prior = torch.mean(encoding_one_hot + epsilon, dim=0)
+            normalizer = torch.sum(prior)
+            prior = prior / normalizer
+            true_ent = torch.sum(-1 * prior * prior.log())
+
             # The correct thing is to approximate the entropy of the batch
             vector_diffs = mus.unsqueeze(1) - self.prototypes
 
             # scaling = torch.exp(0.5 * logvar).unsqueeze(1) + 0.00001  # Don't want to divide by zero ever.
             # normalized_diffs = torch.div(vector_diffs, scaling)
-            normalized_diffs = vector_diffs / 2
+            normalized_diffs = vector_diffs / 2  # Hacky and gross. But seems to work
             square_distances = torch.square(normalized_diffs)
             normalized_dists = torch.sum(square_distances, dim=2)
             neg_dist = -0.5 * normalized_dists
@@ -91,8 +92,7 @@ class VQLayer(nn.Module):
         else:  # It's fine because this will never be the case in actual training.
             ent = 0
 
-        # vq_loss += 0.01 * ent
-        vq_loss += settings.kl_weight * ent
+        vq_loss += settings.entropy_weight * ent
         if do_print:
             print("Ent val", ent)
             # print("Stds", stds)
@@ -134,14 +134,8 @@ class VQ(nn.Module):
             out_dim = self.hidden_dim if len(self.layers) < num_layers - 1 else self.comm_dim
         self.vq_layer = VQLayer(num_protos, self.proto_latent_dim, init_vectors=specified_tok)
         self.fc_mu = nn.Linear(self.proto_latent_dim, self.proto_latent_dim)
-        if variational:
-            self.fc_var = nn.Linear(self.proto_latent_dim, self.proto_latent_dim)
-            # Learnable prior is initialized to match a unit Gaussian.
-            if settings.learned_marginal:
-                self.prior_mu = nn.Parameter(data=torch.Tensor(out_dim))
-                self.prior_logvar = nn.Parameter(data=torch.Tensor(out_dim))
-                torch.nn.init.constant_(self.prior_mu, 0)
-                torch.nn.init.constant_(self.prior_logvar, 0)
+        self.fc_var = nn.Linear(self.proto_latent_dim, self.proto_latent_dim)
+        self.variational = variational
         self.eval_mode = False
 
     def forward(self, x):
@@ -161,24 +155,15 @@ class VQ(nn.Module):
             output, proto_loss = self.vq_layer(sample, mu, logvar)
             # Regroup the tokens into messages, now with possibly multiple tokens.
             output = torch.reshape(output, (-1, self.comm_dim))
-            relevant_mu = mu
             # Compute the KL divergence
-            if not settings.learned_marginal:
-                kld_loss = torch.mean(-0.5 * torch.sum(1 + logvar - relevant_mu ** 2 - logvar.exp(), dim=1), dim=0)
-                regularization_loss = 0
-            else:
-                kld_loss = torch.mean(0.5 * torch.sum(
-                    self.prior_logvar - logvar - 1 + logvar.exp() / self.prior_logvar.exp() + (
-                                (self.prior_mu - relevant_mu) ** 2) / self.prior_logvar.exp(), dim=1), dim=0)
-                regularization_loss = torch.mean(self.prior_logvar ** 2) + torch.mean(self.prior_mu ** 2)
-            total_loss = settings.kl_weight * kld_loss + proto_loss + 0.01 * regularization_loss
-            # total_loss = 0.01 * kld_loss + proto_loss + 0.01 * regularization_loss
+            kld_loss = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim=1), dim=0)
+            total_loss = settings.kl_weight * kld_loss + proto_loss
             capacity = kld_loss
-            if np.random.random() < 0.01:
-                print("KLD loss", kld_loss.item())
         else:
-            x = self.fc_mu(x)
+            reshaped = torch.reshape(x, (-1, self.proto_latent_dim))
+            x = self.fc_mu(reshaped)
             output, total_loss = self.vq_layer(x)
+            output = torch.reshape(output, (-1, self.comm_dim))
             capacity = torch.tensor(0)
         return output, total_loss, capacity
 
