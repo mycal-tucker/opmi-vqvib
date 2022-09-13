@@ -11,7 +11,8 @@ def gen_plots(basepath):
     snap_eng_accs = {}
     nosnap_eng_accs = {}
     full_paths = []
-    for base in ['train', 'val']:
+    # for base in ['train', 'val']:
+    for base in ['train']:
         for num_candidates in candidates:
             full_paths.append('_'.join([base, distinct, str(num_candidates), 'metrics']))
     epochs = None
@@ -65,28 +66,28 @@ def gen_plots(basepath):
     plot_multi_trials([all_complexities, all_eng],
                       ['VQ-VIB'],
                       sizes, filename=basepath + 'eng_')
-    plot_multi_metrics(all_accs, labels=['Train 2', 'Train 16', 'Train 32', 'OOD 2', 'OOD 16', 'OOD 32'], file_root=basepath + distinct)
+    plot_multi_metrics(all_accs, labels=['2', '16', '32', 'OOD 16', 'OOD 32'], file_root=basepath + distinct)
     plot_multi_metrics(snap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'snap_eng_')
     plot_multi_metrics(nosnap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'nosnap_eng_')
 
 
 def run():
-    base = 'saved_models/beta0.001/klweight0.01'
-    # for num_tok in [1, 2, 4, 8]:
-    setup = 'alpha' + str(alpha) + '_' + str(num_tok) + 'tok'
-    basepath = base + '/' + setup + '/' + speaker_type + '/entropyweight0.0/'
-    gen_plots(basepath)
+    base = 'saved_models/' + fieldname + '/trainfrac1.0/' + speaker_type + '/alpha' + str(alpha) + '/' + str(num_tok) + 'tok/entropyweight' + entropyweight + '/'
+    gen_plots(base)
 
 
 if __name__ == '__main__':
     # distinct = 'True'
     # candidates = [2]
-    distinct = 'True'
+    distinct = 'False'
     candidates = [2, 16, 32]
-    # model_types = ['cont', 'vq']
+
+    fieldname = 'all'
+
     speaker_type = 'vq'
+    entropyweight = '0.0'
     alpha = 10
-    num_tok = 8
+    num_tok = 1
     # seeds = [1, 2]
     seeds = [0, 1, 2, 3, 4]
     burnin = 0

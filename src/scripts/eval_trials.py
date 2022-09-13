@@ -38,7 +38,7 @@ def eval_run(basepath, num_tok, speaker_type):
     eng_decoder = torch.load('english_vg_dec64.pt').to(settings.device)
     eng_listener = torch.load('english_vg_list64.pt').to(settings.device)
     for idx, checkpoint in enumerate(checkpoints):  # TODO: just use the last checkpoint instead of iterating through?
-        if checkpoint < 9000:
+        if checkpoint != 9999:
             print("Skipping checkpoint", checkpoint)
             continue
         print("\n\n\nCheckpoint", checkpoint)
@@ -69,7 +69,7 @@ def eval_run(basepath, num_tok, speaker_type):
             team.load_state_dict(torch.load(basepath + str(checkpoint) + '/model.pt'))
             team.to(settings.device)
         # And evaluate it
-        metric = PerformanceMetrics.from_file(basepath + str(checkpoint) + '/train_2_metrics')
+        metric = PerformanceMetrics.from_file(basepath + str(checkpoint) + '/train_True_2_metrics')
         comps = metric.complexities
         if comps[-1] is not None:
             complexities.append(comps[-1])
@@ -149,17 +149,18 @@ def eval_run(basepath, num_tok, speaker_type):
         #              savepath=basepath + '../ec_to_eng_top_comm_id.png')
         # plot_scatter([complexities, mean_syn_eng_comm_id], ['Complexity', 'Tok to Eng syn'],
         #              savepath=basepath + '../ec_to_eng_syn_comm_id.png')
-    return complexities[-1], (np.mean(top_eng_comm_id_accs), np.std(top_eng_comm_id_accs)),\
-           (np.mean(top_eng_accs), np.std(top_eng_accs)), (np.mean(top_nosnap_accs), np.std(top_nosnap_accs))
+    num_runs = len(top_eng_accs)
+    return complexities[-1], (np.mean(top_eng_comm_id_accs), np.std(top_eng_comm_id_accs) / np.sqrt(num_runs)),\
+           (np.mean(top_eng_accs), np.std(top_eng_accs) / np.sqrt(num_runs)), (np.mean(top_nosnap_accs), np.std(top_nosnap_accs) / np.sqrt(num_runs))
 
 
 # Iterate over combinations of hyperparameters and seeds.
 def run():
-    base = 'saved_models/beta0.001/klweight0.005'
+    # base = 'saved_models/topname/trainfrac1.0/'
+    base = 'saved_models/all/trainfrac1.0/'
     for speaker_type in model_types:
         for alpha in alphas:
             for num_tok in num_tokens:
-                setup = 'alpha' + str(alpha) + '_' + str(num_tok) + 'tok'
                 all_comps = []
                 all_top_ec_to_eng_comm_ids = [[], []]  # Mean, std.
                 all_top_ec_to_eng = [[], []]
@@ -170,9 +171,9 @@ def run():
                     top_ec_to_eng_comm_ids = []
                     top_ec_to_engs = []
                     top_eng_to_ecs = []
+                    basepath = '/'.join([base, speaker_type, 'alpha' + str(alpha), str(num_tok) + 'tok', 'entropyweight' + str(entropy_weight)]) + '/'
                     for s in seeds:
-                        basepath = '/'.join([base, setup, speaker_type, 'entropyweight' + str(entropy_weight), 'seed' + str(s)]) + '/'
-                        comp, top_ec_to_eng_comm_id, top_ec_to_eng, top_eng_to_ec = eval_run(basepath, num_tok, speaker_type)
+                        comp, top_ec_to_eng_comm_id, top_ec_to_eng, top_eng_to_ec = eval_run(basepath + '/seed' + str(s) + '/', num_tok, speaker_type)
                         comps.append(comp)
                         top_ec_to_eng_comm_ids.append(top_ec_to_eng_comm_id)
                         top_ec_to_engs.append(top_ec_to_eng)
@@ -187,17 +188,17 @@ def run():
                                       labels,
                                       [20 for _ in labels],
                                       ylabel='Utility EC to Eng Top Comm ID',
-                                      filename='/'.join([base, setup, speaker_type, 'EC_to_Eng_Top_Comm_ID']))
+                                      filename='/'.join([basepath, 'EC_to_Eng_Top_Comm_ID']))
                     plot_multi_trials([all_comps, all_top_ec_to_eng[0], all_top_ec_to_eng[1]],
                                       labels,
                                       [20 for _ in labels],
                                       ylabel='Utility EC to Eng Top',
-                                      filename='/'.join([base, setup, speaker_type, 'EC_to_Eng_Top']))
+                                      filename='/'.join([basepath, 'EC_to_Eng_Top']))
                     plot_multi_trials([all_comps, all_top_eng_to_ec[0], all_top_eng_to_ec[1]],
                                       labels,
                                       [20 for _ in labels],
                                       ylabel='Utility Eng to EC Top',
-                                      filename='/'.join([base, setup, speaker_type, 'Eng_to_EC_Top']))
+                                      filename='/'.join([basepath, 'Eng_to_EC_Top']))
 
 
 if __name__ == '__main__':
@@ -216,8 +217,8 @@ if __name__ == '__main__':
     settings.kl_weight = 0.0
     settings.epoch = 0
     english_fieldname = 'vg_domain'
-    experiment_fieldname = 'vg_domain'
-    settings.distinct_words = True
+    experiment_fieldname = 'topname'  # FIXME
+    settings.distinct_words = False  # FIXME
     settings.entropy_weight = 0.0
 
     comm_dim = 64
@@ -244,7 +245,8 @@ if __name__ == '__main__':
     candidates = [2]
     model_types = ['vq']
     seeds = [0, 1, 2, 3, 4]
-    entropy_weights = [0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07]  # + [0.02 * i for i in range(1, 5)] + [0.07]
+    entropy_weights = [0.01, 0.03, 0.05, 0.06]
+    # entropy_weights = [0.0, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06]
     alphas = [10]
     num_tokens = [1]
     run()

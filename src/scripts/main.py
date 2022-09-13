@@ -332,11 +332,12 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
     supervised_data = get_supervised_data(sup_dataset, 2, glove_data, vae)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)  # 0.0001 is good for no recons, or for onehot things.
-    # optimizer = optim.Adam(model.parameters(), lr=0.001)  # 0.001 is good for alpha 10 (and is the default)
+    # optimizer = optim.Adam(model.parameters(), lr=0.0001)  # 0.0001 is good for no recons, or for onehot things.
+    optimizer = optim.Adam(model.parameters(), lr=0.001)  # 0.001 is good for alpha 10 (and is the default)
     running_acc = 0
     running_mse = 0
-    num_cand_to_metrics = {True: {2: [], 16: [], 32: []},  # Don't try many distractors when
+    # num_cand_to_metrics = {True: {2: [], 16: [], 32: []},  # Don't try many distractors when
+    num_cand_to_metrics = {True: {2: []},  # Don't try many distractors when
                            False: {2: [], 16: [], 32: []}}
     for set_distinct in [True, False]:
         for empty_list in num_cand_to_metrics.get(set_distinct).values():

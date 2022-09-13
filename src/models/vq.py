@@ -8,7 +8,7 @@ from src.models.network_utils import reparameterize, gumbel_softmax
 
 
 class VQLayer(nn.Module):
-    def __init__(self, num_protos, latent_dim, init_vectors=None, beta=0.01):
+    def __init__(self, num_protos, latent_dim, init_vectors=None, beta=0.25):
         super(VQLayer, self).__init__()
         self.num_protos = num_protos
         self.latent_dim = latent_dim

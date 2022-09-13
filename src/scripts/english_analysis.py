@@ -124,18 +124,18 @@ def train_listener(data):
 def run():
     train_data = get_feature_data(features_filename)
     # Calculate complexity
-    settings.distinct_words = False
-    complexity, training_log = get_complexity(train_data)
-    print("Complexity", complexity)
-    plt.plot(training_log)
-    plt.xlabel("Training epoch")
-    plt.ylabel("Complexity")
-    plt.show()
+    # settings.distinct_words = False
+    # complexity, training_log = get_complexity(train_data)
+    # print("Complexity", complexity)
+    # plt.plot(training_log)
+    # plt.xlabel("Training epoch")
+    # plt.ylabel("Complexity")
+    # plt.show()
     # Calculate informativeness via an autoencoder
-    # model = Decoder(comm_dim, 512, num_layers=3)
-    # model.to(settings.device)
-    # train(train_data, model)
-    # torch.save(model, 'english64.pt')
+    model = Decoder(comm_dim, 512, num_layers=3)
+    model.to(settings.device)
+    train(train_data, model)
+    torch.save(model, 'english64.pt')
     # Calculate utility via a decoder and listener
     # settings.distinct_words = True
     # train_listener(train_data)

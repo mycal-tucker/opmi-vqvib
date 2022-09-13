@@ -79,8 +79,10 @@ class MLP(nn.Module):
             #     print("Entropy", uncond_ent)
             #     print("Temperature", temperature)
         network_loss = settings.kl_weight * capacity
-        if settings.epoch > 0:  # Yes for alpha 0
+        if settings.epoch < 10000:  # Yes for alpha 0
             network_loss -= 0.001 * uncond_ent
+        else:
+            network_loss += settings.entropy_weight * uncond_ent
         return output, network_loss, capacity
 
     def get_token_dist(self, x):

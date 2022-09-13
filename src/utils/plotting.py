@@ -48,6 +48,7 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, filename
     plt.ylabel(ylabel)
     plt.legend()
     plt.tight_layout()
+    print("Saving to", filename)
     if filename is not None:
         plt.savefig(filename)
     else:
@@ -61,7 +62,8 @@ def plot_multi_metrics(multi_metrics, labels=None, file_root=''):  # TODO: refac
     # comm_to_color = {0: 'tab:blue', 1: 'tab:green', 2: 'tab:olive', 3: 'tab:red', 4: 'tab:purple', 5: 'tab:pink'}
     # labels = ['Train 2', 'Train 8', 'Train 16', 'Train 32', 'Val 2', 'Val 8', 'Val 16', 'Val 32']
     # comm_to_color = {0: 'xkcd:pink', 1: 'xkcd:orangered', 2: 'xkcd:red', 3: 'xkcd:purple', 4: 'xkcd:cyan', 5: 'xkcd:aqua', 6: 'xkcd:lightblue', 7: 'xkcd:azure'}
-    comm_to_color = {0: 'xkcd:pink', 1: 'xkcd:orangered', 2: 'xkcd:red', 3: 'xkcd:cyan', 4: 'xkcd:aqua', 5: 'xkcd:lightblue'}
+    # comm_to_color = {0: 'xkcd:pink', 1: 'xkcd:orangered', 2: 'xkcd:red', 3: 'xkcd:cyan', 4: 'xkcd:aqua', 5: 'xkcd:lightblue'}
+    comm_to_color = {0: 'xkcd:blue', 1: 'xkcd:red', 2: 'xkcd:violet'}
     for comm_type, metrics in multi_metrics.items():
         # color = comm_to_color.get(comm_type)
         num_metrics = len(metrics) - 1  # Last one is just epoch
@@ -71,7 +73,8 @@ def plot_multi_metrics(multi_metrics, labels=None, file_root=''):  # TODO: refac
         for eval_idx, eval_type in enumerate(metrics[:-1]):
             # Now iterate over trials.
             color = comm_to_color[eval_idx]
-            linestyle = 'solid' if eval_idx < num_metrics / 2 else 'dashed'
+            # linestyle = 'solid' if eval_idx < num_metrics / 2 else 'dashed'
+            linestyle = 'solid'
             for trial_idx in range(len(eval_type)):
                 accs = metrics[eval_idx][trial_idx]
                 plt.plot(epochs, accs, color, linestyle='dashed', alpha=0.2)
@@ -90,8 +93,8 @@ def plot_multi_metrics(multi_metrics, labels=None, file_root=''):  # TODO: refac
     plt.xlabel('Training epoch')
     plt.ylabel('Communicative accuracy (%)')
     # plt.ylim(0.48, 1.02)
-    if file_root is not None:
-        plt.title(file_root)
+    # if file_root is not None:
+    #     plt.title(file_root)
     plt.tight_layout()
     plt.savefig(file_root + 'trials.png')
     plt.close()

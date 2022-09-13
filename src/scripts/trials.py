@@ -19,8 +19,10 @@ def run_trial():
     glove_data = get_glove_vectors(comm_dim)
     train_data = get_feature_data(features_filename, selected_fraction=train_fraction)
     train_topnames, train_responses = get_unique_labels(train_data)
-    val_data = get_feature_data(features_filename, excluded_names=train_responses)
-    # val_data = train_data  # FIXME
+    if train_fraction == 1.0:
+        val_data = train_data
+    else:
+        val_data = get_feature_data(features_filename, excluded_names=train_responses)
     # if len(train_data) < 1000 or len(val_data) < 1000:
     #     return
     # viz_data = get_feature_data(features_filename, desired_names=viz_names, max_per_class=40)
@@ -54,7 +56,7 @@ def run_trial():
 if __name__ == '__main__':
     feature_len = 512
     settings.see_distractor = False
-    num_distractors = 15
+    num_distractors = 1
     num_epochs = 300000  # 1000 is way too short, but it's quick for debugging.e
     num_burnin = num_epochs
     val_period = 10000  # How often to test on the validation set and calculate various info metrics.
@@ -62,23 +64,28 @@ if __name__ == '__main__':
     comm_dim = 64  # Normally, 64. But for onehot, make it 1024?
     features_filename = 'data/features_nobox.csv'
 
-    # fieldname = 'vg_domain'
-    fieldname = 'topname'
-    settings.distinct_words = True
+    # field_setup = 'vg_domain'
+    field_setup = 'topname'
+    # field_setup = 'all'
+    settings.distinct_words = field_setup != 'all'
+    fieldname = field_setup if field_setup != 'all' else 'topname'
+
+    if num_distractors != 1:
+        field_setup += str(num_distractors)
 
     train_fraction = 0.2
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # settings.kl_weight = 0.001  # For cont
-    settings.kl_weight = 0.01  # For VQ 1 token, 0.001
-    settings.kl_incr = 0.0  # For VQ 1 token 0.00001 works, but is slow.
+    # settings.kl_weight = 0.01  # For VQ 1 token, 0.001
+    # settings.kl_incr = 0.0  # For VQ 1 token 0.00001 works, but is slow.
     # settings.kl_weight = 0.01  # For VQ 8 tokens
     # settings.kl_incr = 0.0003  # For VQ 8 token 0.0001 is good but a little slow, but 0.001 is too fast.
 
     # Onehot
     # settings.kl_weight = 0.001
     # settings.kl_incr = 0.00001  # For onehot with 1 token
-    # settings.kl_weight = 0.0  # Having a non-zero starting weight is very important to encourage exploration
-    # settings.kl_incr = 0.0  # For onhot with 8 tokens .001 is too fast. 0.0001 is good but a little slow.
+    settings.kl_weight = 0.0  # Having a non-zero starting weight is very important to encourage exploration
+    settings.kl_incr = 0.0  # For onhot with 8 tokens .001 is too fast. 0.0001 is good but a little slow.
     # num_burnin = 3000
 
     settings.num_distractors = num_distractors
@@ -99,23 +106,25 @@ if __name__ == '__main__':
     vae.load_state_dict(torch.load('saved_models/vae' + str(vae_beta) +'.pt'))
     vae.to(settings.device)
 
-    # num_unique_messages = 3 ** 8
-    # num_prototypes = int(num_unique_messages ** (1 / num_tokens))
-    # num_prototypes = 32
     num_prototypes = 1024
 
-    starting_weight = settings.kl_weight
     seeds = [i for i in range(0, 5)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
-    for num_tokens in [8]:
+    if comm_types == ['onehot']:
+        settings.kl_weight = 0.0
+    elif comm_types == ['vq']:
+        settings.kl_weight = 0.01
+
+    starting_weight = settings.kl_weight
+    for num_tokens in [1, 8]:
         for alpha in [10]:
             if alpha == 0:
                 variational = True
                 # settings.kl_weight = 0.0
                 # starting_weight = 0.0
             settings.alpha = alpha
-            # for entropy_weight in [0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06]:
+            # for entropy_weight in [0.0, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06]:
             for entropy_weight in [0.0]:
                 settings.entropy_weight = entropy_weight
                 for seed in seeds:
@@ -125,5 +134,5 @@ if __name__ == '__main__':
                         np.random.seed(seed)
                         torch.manual_seed(seed)
                         settings.kl_weight = starting_weight
-                        savepath = 'saved_models/beta' + str(vae_beta) + '/klweight' + str(starting_weight) + '/alpha' + str(settings.alpha) + '_' + str(num_tokens) + 'tok/' + speaker_type + '/entropyweight' + str(settings.entropy_weight) + '/seed' + str(seed) + '/'
+                        savepath = 'saved_models/' + field_setup + '/trainfrac' + str(train_fraction) + '/' + speaker_type + '/alpha' + str(settings.alpha) + '/' + str(num_tokens) + 'tok/entropyweight' + str(settings.entropy_weight) + '/seed' + str(seed) + '/'
                         run_trial()
