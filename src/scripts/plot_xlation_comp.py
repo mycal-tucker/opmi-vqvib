@@ -88,6 +88,9 @@ def run():
 
     for data, suffix in zip([utilities2_100, utilities16_100, utilities32_100], ['2', '16', '32']):
         plot_multi_trials([comps, data], labels, sizes, ylabel='Utility', colors=colors, filename='xlation_train_comp' + suffix + '.png')
+    labels = ['$C=2$'] + ['' for _ in utilities2_100[:-1]] + ['$C=16$'] + ['' for _ in utilities16_100[:-1]] + ['$C=32$'] + ['' for _ in utilities32_100[:-1]]
+    sizes = [4 * small_size for _ in utilities2_100] + [2 * small_size for _ in utilities16_100] + [small_size for _ in utilities32_100]
+    plot_multi_trials([comps + comps + comps, utilities2_100 + utilities16_100 + utilities32_100], labels, sizes, ylabel='Translation Utility', colors=None, filename='xlation_comp_all.png')
 
 
 if __name__ == '__main__':

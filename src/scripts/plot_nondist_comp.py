@@ -11,21 +11,21 @@ def run():
     colors = []
     small_size = 50
 
-    labels.append('$\lambda_I = 0.1; n = 1$')
-    utilities2.append([0.879, 0.85, 0.878, 0.812, 0.865])
-    utilities16.append([0.308, 0.252, 0.351, 0.211, 0.312])
-    utilities32.append([0.173, 0.134, 0.195, 0.106, 0.177])
-    comps.append([1.284, 1.141, 1.347, 0.995, 1.142])
-    sizes.append(small_size)
-    colors.append('xkcd:blue')
-
-    labels.append('$\lambda_I = 1; n = 1$')
-    utilities2.append([0.947, 0.941, 0.936, 0.923, 0.933])
-    utilities16.append([0.593, 0.55, 0.559, 0.541, 0.539])
-    utilities32.append([0.432, 0.388, 0.418, 0.384, 0.377])
-    comps.append([2.13, 1.899, 2.113, 1.94, 2.031])
-    sizes.append(small_size)
-    colors.append('xkcd:blue')
+    # labels.append('$\lambda_I = 0.1; n = 1$')
+    # utilities2.append([0.879, 0.85, 0.878, 0.812, 0.865])
+    # utilities16.append([0.308, 0.252, 0.351, 0.211, 0.312])
+    # utilities32.append([0.173, 0.134, 0.195, 0.106, 0.177])
+    # comps.append([1.284, 1.141, 1.347, 0.995, 1.142])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 1; n = 1$')
+    # utilities2.append([0.947, 0.941, 0.936, 0.923, 0.933])
+    # utilities16.append([0.593, 0.55, 0.559, 0.541, 0.539])
+    # utilities32.append([0.432, 0.388, 0.418, 0.384, 0.377])
+    # comps.append([2.13, 1.899, 2.113, 1.94, 2.031])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
 
     labels.append('$\lambda_I = 0; n = 4$')
     utilities2.append([0.909, 0.504, 0.912, 0.494, 0.498])
@@ -51,38 +51,22 @@ def run():
     sizes.append(small_size)
     colors.append('xkcd:blue')
 
-    # Was for 300k
-    # labels.append('$\lambda_I = 10; n = 4$')
-    # utilities2.append([0.995, 0.994, 0.997, 0.999, 0.991])
-    # utilities16.append([0.936, 0.94, 0.958, 0.984, 0.944])
-    # utilities32.append([0.902, 0.918, 0.935, 0.963, 0.908])
-    # comps.append([4.462, 4.15, 4.366, 3.603, 2.51])
-    # sizes.append(small_size)
-    # colors.append('xkcd:blue')
     # Just for 100k
     labels.append('$\lambda_I = 10; n = 4$')
     utilities2.append([ 0.996, 0.99, 0.996, 0.998, 0.994])
     utilities16.append([0.944, 0.929, 0.958, 0.975, 0.935])
     utilities32.append([0.915, 0.865, 0.932, 0.954, 0.895])
-    comps.append([ 4.634, 4.924, 4.915, 4.245, 3.565])
+    comps.append([4.634, 4.924, 4.915, 4.245, 3.565])
     sizes.append(small_size)
     colors.append('xkcd:blue')
 
-    # Was 300k
     # labels.append('$\lambda_I = 100; n = 4$')
-    # utilities2.append([0.997, 0.994, 0.998, 0.998, 0.996])
-    # utilities16.append([ 0.957, 0.959, 0.973, 0.985, 0.95])
-    # utilities32.append([0.937, 0.911, 0.955, 0.969, 0.912])
-    # comps.append([ 3.675, 4.957, 2.993, 4.892, 4.027])
+    # utilities2.append([0.996, 0.995, 0.996, 0.999, 0.995])
+    # utilities16.append([ 0.938, 0.927, 0.963, 0.979, 0.95])
+    # utilities32.append([0.9, 0.877, 0.941, 0.958, 0.916])
+    # comps.append([ 4.812, 4.593, 3.557, 4.942, 4.373])
     # sizes.append(small_size)
     # colors.append('xkcd:orange')
-    labels.append('$\lambda_I = 100; n = 4$')
-    utilities2.append([0.996, 0.995, 0.996, 0.999, 0.995])
-    utilities16.append([ 0.938, 0.927, 0.963, 0.979, 0.95])
-    utilities32.append([0.9, 0.877, 0.941, 0.958, 0.916])
-    comps.append([ 4.812, 4.593, 3.557, 4.942, 4.373])
-    sizes.append(small_size)
-    colors.append('xkcd:orange')
 
 
     # labels.append('$\lambda_I = 1; n = 8$')
@@ -112,6 +96,11 @@ def run():
 
     for data, suffix in zip([utilities2, utilities16, utilities32], ['2', '16', '32']):
         plot_multi_trials([comps, data], labels, sizes, ylabel='Utility', colors=None, filename='nondist_comp' + suffix + '.png')
+
+    labels = ['$C=2$'] + ['' for _ in utilities2[:-1]] + ['$C=16$'] + ['' for _ in utilities16[:-1]] + ['$C=32$'] + ['' for _ in utilities32[:-1]]
+    sizes = [4 * small_size for _ in utilities2] + [2 * small_size for _ in utilities16] + [small_size for _ in utilities32]
+    plot_multi_trials([comps + comps + comps, utilities2 + utilities16 + utilities32], labels, sizes, ylabel='In-Distribution Utility', colors=None, filename='nondist_comp_all.png')
+    return comps, utilities2, utilities16, utilities32
 
 if __name__ == '__main__':
     run()

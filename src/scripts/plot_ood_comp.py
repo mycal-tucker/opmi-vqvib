@@ -61,13 +61,13 @@ def run():
     sizes.append(small_size)
     colors.append('xkcd:blue')
 
-    labels.append('$\lambda_I = 100; n = 4$')
-    utilities2.append([ 0.982, 0.966, 0.952, 0.984, 0.993])
-    utilities16.append([0.805, 0.73, 0.733, 0.851, 0.903])
-    utilities32.append([0.716, 0.623, 0.644, 0.763, 0.851])
-    comps.append([ 4.812, 4.593, 3.557, 4.942, 4.373])
-    sizes.append(small_size)
-    colors.append('xkcd:orange')
+    # labels.append('$\lambda_I = 100; n = 4$')
+    # utilities2.append([ 0.982, 0.966, 0.952, 0.984, 0.993])
+    # utilities16.append([0.805, 0.73, 0.733, 0.851, 0.903])
+    # utilities32.append([0.716, 0.623, 0.644, 0.763, 0.851])
+    # comps.append([ 4.812, 4.593, 3.557, 4.942, 4.373])
+    # sizes.append(small_size)
+    # colors.append('xkcd:orange')
 
     # labels.append('$\lambda_I = 1; n = 8$')
     # utilities2.append([0.924, 0.882, 0.933, 0.962])
@@ -95,6 +95,10 @@ def run():
 
     for data, suffix in zip([utilities2, utilities16, utilities32], ['2', '16', '32']):
         plot_multi_trials([comps, data], labels, sizes, ylabel='Utility', colors=None, filename='ood_comp' + suffix + '.png')
+    labels = ['$C=2$'] + ['' for _ in utilities2[:-1]] + ['$C=16$'] + ['' for _ in utilities16[:-1]] + ['$C=32$'] + ['' for _ in utilities32[:-1]]
+    sizes = [4 * small_size for _ in utilities2] + [2 * small_size for _ in utilities16] + [small_size for _ in utilities32]
+    plot_multi_trials([comps + comps + comps, utilities2 + utilities16 + utilities32], labels, sizes, ylabel='OOD Utility', colors=None, filename='ood_comp_all.png')
+    return comps, utilities2, utilities16, utilities32
 
 
 if __name__ == '__main__':

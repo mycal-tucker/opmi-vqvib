@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import euclidean_distances
 from sklearn.manifold import MDS, TSNE
-
+import itertools
 
 def plot_metrics(metrics, labels, x_axis=None, basepath=None):
     for metric, label in zip(metrics, labels):
@@ -42,19 +42,31 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
     plt.rc('font', **font)
     fig, ax = plt.subplots(figsize=(10, 5))
     idx = 0
-    color_cycle = iter(plt.cm.viridis(np.linspace(0, 1, len(multi_metrics[0]))))
+    # color_cycle = iter(plt.cm.viridis(np.linspace(0, 1, len(multi_metrics[0]))))
+    reset_period = 4
+    color_cycle = itertools.cycle(plt.cm.viridis(np.linspace(0, 1, 3)))
+    periodx = []
+    periody = []
     for metric_x, metric_y, label, s in zip(multi_metrics[0], multi_metrics[1], series_labels, sizes):
         yerr = multi_metrics[2][idx] if len(multi_metrics) == 3 else None
-        c = None if colors is None else colors[idx]
         # Raw data version
         # pcm = ax.scatter(metric_x, metric_y, s=s, label=label, color=next(color_cycle))
 
         # Error-bar version
         xstd = np.std(metric_x)
         ystd = np.std(metric_y)
-        c = next(color_cycle)
-        pcm = ax.scatter(np.mean(metric_x), np.mean(metric_y), s=s, label=label, color=c)
-        plt.errorbar(np.mean(metric_x), np.mean(metric_y), xerr=xstd, yerr=ystd, color=c)
+        if idx % reset_period == 0:
+            c = next(color_cycle)
+            periodx = []
+            periody = []
+        xmean = np.mean(metric_x)
+        ymean = np.mean(metric_y)
+        periodx.append(xmean)
+        periody.append(ymean)
+        pcm = ax.scatter(xmean, ymean, s=s, label=label, color=c)
+        plt.errorbar(xmean, ymean, xerr=xstd, yerr=ystd, color=c)
+        # And add a dashed line between the series
+        plt.plot(periodx, periody, 'k--', alpha=0.5)
         if yerr is not None:
             plt.errorbar(metric_x, metric_y, yerr=yerr, fmt='o')
         idx += 1

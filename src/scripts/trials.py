@@ -123,8 +123,8 @@ if __name__ == '__main__':
 
     entropy_weight = 0.0
     starting_weight = settings.kl_weight
-    for num_tokens in [2]:
-        for alpha in [0.1, 1.0, 10]:
+    for num_tokens in [4]:
+        for alpha in [0.5, 1.5, 2, 3]:
             if alpha == 0:
                 variational = True
                 # settings.kl_weight = 0.0

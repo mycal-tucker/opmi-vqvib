@@ -71,6 +71,9 @@ def run():
 
     for data, suffix in zip([xlation_utilities2_100, xlation_utilities16_100, xlation_utilities32_100], ['2', '16', '32']):
         plot_multi_trials([ood_utilities32, data], labels, sizes, ylabel='Translation Utility', xlabel='OOD Utility', colors=None, filename='xlation' + suffix + '_ood.png')
+    labels = ['$C=2$'] + ['' for _ in xlation_utilities2_100[:-1]] + ['$C=16$'] + ['' for _ in xlation_utilities16_100[:-1]] + ['$C=32$'] + ['' for _ in xlation_utilities32_100[:-1]]
+    sizes = [4 * small_size for _ in xlation_utilities2_100] + [2 * small_size for _ in xlation_utilities16_100] + [small_size for _ in xlation_utilities32_100]
+    plot_multi_trials([ood_utilities32 + ood_utilities32 + ood_utilities32, xlation_utilities2_100 + xlation_utilities16_100 + xlation_utilities32_100], labels, sizes, ylabel='Translation Utility', xlabel='OOD Utility; $C=32$', colors=None, filename='xlation_ood_all.png')
 
 if __name__ == '__main__':
     run()

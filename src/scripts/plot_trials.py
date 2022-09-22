@@ -104,11 +104,11 @@ if __name__ == '__main__':
     fieldname = 'topname'
 
     speaker_type = 'vq'
-    # klweight = '0.01'
-    klweight = '0.0'
+    klweight = '0.01'
+    # klweight = '0.0'
     alpha = 10
     num_tok = 4
-    seeds = [0, 1]
-    # seeds = [0, 1, 2, 3, 4]
+    # seeds = [0, 1]
+    seeds = [0, 1, 2, 3, 4]
     burnin = 0
     run()
