@@ -134,3 +134,4 @@ saved_models/
 *.png
 
 *.pt
+*.csv

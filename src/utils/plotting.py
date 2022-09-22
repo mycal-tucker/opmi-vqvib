@@ -35,17 +35,33 @@ def plot_scatter(metrics, labels, savepath=None):
     plt.close()
 
 
-def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, filename=None):
-    fig, ax = plt.subplots()
+def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=None, colors=None, filename=None):
+    font = {'family': 'normal',
+            'size': 20}
+
+    plt.rc('font', **font)
+    fig, ax = plt.subplots(figsize=(10, 5))
     idx = 0
+    color_cycle = iter(plt.cm.viridis(np.linspace(0, 1, len(multi_metrics[0]))))
     for metric_x, metric_y, label, s in zip(multi_metrics[0], multi_metrics[1], series_labels, sizes):
         yerr = multi_metrics[2][idx] if len(multi_metrics) == 3 else None
-        pcm = ax.scatter(metric_x, metric_y, s=s, label=label)
+        c = None if colors is None else colors[idx]
+        # Raw data version
+        # pcm = ax.scatter(metric_x, metric_y, s=s, label=label, color=next(color_cycle))
+
+        # Error-bar version
+        xstd = np.std(metric_x)
+        ystd = np.std(metric_y)
+        c = next(color_cycle)
+        pcm = ax.scatter(np.mean(metric_x), np.mean(metric_y), s=s, label=label, color=c)
+        plt.errorbar(np.mean(metric_x), np.mean(metric_y), xerr=xstd, yerr=ystd, color=c)
         if yerr is not None:
             plt.errorbar(metric_x, metric_y, yerr=yerr, fmt='o')
         idx += 1
-    plt.xlabel('Complexity (nats)')
+    xlabel = xlabel if xlabel is not None else 'Complexity (nats)'
+    plt.xlabel(xlabel)
     plt.ylabel(ylabel)
+    # plt.ylim(0.5, 1.0)
     plt.legend()
     plt.tight_layout()
     print("Saving to", filename)
@@ -57,13 +73,18 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, filename
 
 
 def plot_multi_metrics(multi_metrics, labels=None, file_root=''):  # TODO: refactor this to be less hardcoded coloring stuff.
+    font = {'family': 'normal',
+            'weight': 'bold',
+            'size': 20}
+
+    plt.rc('font', **font)
     fig, ax = plt.subplots()
     # labels = ['Train 2', 'Train 4', 'Train 8', 'Val 2', 'Val 4', 'Val 8']
     # comm_to_color = {0: 'tab:blue', 1: 'tab:green', 2: 'tab:olive', 3: 'tab:red', 4: 'tab:purple', 5: 'tab:pink'}
     # labels = ['Train 2', 'Train 8', 'Train 16', 'Train 32', 'Val 2', 'Val 8', 'Val 16', 'Val 32']
     # comm_to_color = {0: 'xkcd:pink', 1: 'xkcd:orangered', 2: 'xkcd:red', 3: 'xkcd:purple', 4: 'xkcd:cyan', 5: 'xkcd:aqua', 6: 'xkcd:lightblue', 7: 'xkcd:azure'}
     # comm_to_color = {0: 'xkcd:pink', 1: 'xkcd:orangered', 2: 'xkcd:red', 3: 'xkcd:cyan', 4: 'xkcd:aqua', 5: 'xkcd:lightblue'}
-    comm_to_color = {0: 'xkcd:blue', 1: 'xkcd:red', 2: 'xkcd:violet'}
+    comm_to_color = {0: 'xkcd:blue', 1: 'xkcd:violet', 2: 'xkcd:red'}
     for comm_type, metrics in multi_metrics.items():
         # color = comm_to_color.get(comm_type)
         num_metrics = len(metrics) - 1  # Last one is just epoch
@@ -83,16 +104,16 @@ def plot_multi_metrics(multi_metrics, labels=None, file_root=''):  # TODO: refac
             std = np.std(np.vstack(overalls[eval_idx]), axis=0)
             np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
             # print("Epoch", epochs)
-            print("Median overall", mean_overall)
-            print("Std overall", std)
+            print("Median overall", ", ".join([str(elt)[:5] for elt in mean_overall]))
+            print("Std overall", ", ".join([str(elt / np.sqrt(5))[:5] for elt in std]))
             plt.plot(epochs, mean_overall, color, linestyle=linestyle, label=labels[eval_idx])
             print('\n\n\n')
             for a, b, c in zip(epochs, mean_overall, std):
                 print(' '.join([str(np.round(a, 3)), str(np.round(b, 3)), str(np.round(c / np.sqrt(5), 3))]))
-    plt.legend()
+    plt.legend(loc='lower right')
     plt.xlabel('Training epoch')
-    plt.ylabel('Communicative accuracy (%)')
-    # plt.ylim(0.48, 1.02)
+    plt.ylabel('Success rate')
+    plt.ylim(0.0, 1.02)
     # if file_root is not None:
     #     plt.title(file_root)
     plt.tight_layout()

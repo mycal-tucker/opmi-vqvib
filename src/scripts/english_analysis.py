@@ -135,7 +135,7 @@ def run():
     model = Decoder(comm_dim, 512, num_layers=3)
     model.to(settings.device)
     train(train_data, model)
-    torch.save(model, 'english64.pt')
+    # torch.save(model, 'english64.pt')
     # Calculate utility via a decoder and listener
     # settings.distinct_words = True
     # train_listener(train_data)
@@ -146,8 +146,8 @@ if __name__ == '__main__':
     comm_dim = 64  # Align with glove embedding size
     num_epochs = 3000
     batch_size = 256
-    # fieldname = 'vg_domain'
-    fieldname = 'vg_obj_name'
+    fieldname = 'vg_domain'
+    # fieldname = 'vg_obj_name'
     # settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.device = 'cpu'
     glove_data = get_glove_vectors(comm_dim)

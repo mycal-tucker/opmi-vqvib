@@ -55,8 +55,15 @@ def gen_batch(all_data, batch_size, fieldname, vae=None, glove_data=None, see_di
     listener_tensor = torch.Tensor(np.vstack(listener_obs)).to(settings.device)
     if vae is not None:
         with torch.no_grad():
+            # speaker_obs = np.vstack(speaker_obs)
+            # listener_obs = np.vstack(listener_obs)
+            # speaker_obs += np.random.normal(0, scale=0.0001, size=speaker_obs.shape)
+            # listener_obs += np.random.normal(0, scale=0.0001, size=listener_obs.shape)
             speaker_tensor, _ = vae(speaker_tensor)
             listener_tensor, _ = vae(listener_tensor)
+
+    # speaker_tensor = torch.Tensor(speaker_obs).to(settings.device)
+    # listener_tensor = torch.Tensor(listener_obs).to(settings.device)
     label_tensor = torch.Tensor(labels).long().to(settings.device)
     return speaker_tensor, listener_tensor, label_tensor, embeddings
 
@@ -85,6 +92,11 @@ def get_entry_for_labels(dataset, labels, fieldname='topname', num_repeats=1):
             rand_idx = int(np.random.random() * len(matching_rows))
             rows.append(matching_rows[rand_idx])
     big_data = dataset.iloc[rows]
+    return big_data
+
+
+def get_rand_entries(dataset, num_entries):
+    big_data = dataset.sample(n=num_entries)
     return big_data
 
 

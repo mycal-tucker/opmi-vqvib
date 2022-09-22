@@ -13,7 +13,8 @@ class VQLayer(nn.Module):
         self.num_protos = num_protos
         self.latent_dim = latent_dim
         self.trainable_quantizers = init_vectors is None
-        self.beta = beta
+        # self.beta = beta
+        self.beta = 0.01 if settings.alpha == 0 else 0.25
         self.prototypes = nn.Parameter(data=torch.Tensor(num_protos, latent_dim))
         if init_vectors is not None:
             print("Manually specifying vector quantization for", len(init_vectors), "vectors.")

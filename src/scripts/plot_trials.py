@@ -1,6 +1,7 @@
 import os
 from src.utils.performance_metrics import PerformanceMetrics
 from src.utils.plotting import plot_scatter, plot_multi_trials, plot_multi_metrics
+import numpy as np
 
 
 def gen_plots(basepath):
@@ -12,9 +13,8 @@ def gen_plots(basepath):
     nosnap_eng_accs = {}
     full_paths = []
     # for base in ['train', 'val']:
-    for base in ['train']:
-        for num_candidates in candidates:
-            full_paths.append('_'.join([base, distinct, str(num_candidates), 'metrics']))
+    for num_candidates in candidates:
+        full_paths.append('_'.join([datasplit, distinct, str(num_candidates), 'metrics']))
     epochs = None
     speaker_metrics = [[] for _ in range(len(full_paths))]  # Eval type to seed to metrics
     for seed in seeds:
@@ -24,6 +24,7 @@ def gen_plots(basepath):
             continue
         list_of_files = os.listdir(seed_dir)
         last_seed = max([int(f) for f in list_of_files])
+        last_seed = 99999  # FIXME
         try:
             for i, metric_path in enumerate(full_paths):
                 metric = PerformanceMetrics.from_file(seed_dir + str(last_seed) + '/' + metric_path)
@@ -57,6 +58,22 @@ def gen_plots(basepath):
     #             plot_scatter([train_complexities[i], syn_eng_accs[i]], ['Complexity', 'English Synonyms'],
     #                          savepath=basepath + labels[idx] + str(eng_cand_idx) + '_syn_eng_comp.png')
     # Add English data, gathered from english_analysis.py
+    good_comps = []
+    for c in all_complexities[0]:
+        if c is not None:
+            print(c)
+            good_comps.append(c)
+    print("Complexities:\n", ', '.join([str(np.round(c, 3)) for c in good_comps]))
+
+    # Get the accuracies at the last measurement.
+    good_accs = []
+    for a in all_accs['vq'][0]:
+        final_epoch = a[-1]
+        print(final_epoch)
+        good_accs.append(final_epoch)
+
+    print("Accuracies:\n", ', '.join([str(np.round(a, 3)) for a in good_accs]))
+
     all_complexities.append([1.9])
     all_informativeness.append([-0.20])
     sizes = [20, 20, 60]
@@ -66,13 +83,13 @@ def gen_plots(basepath):
     plot_multi_trials([all_complexities, all_eng],
                       ['VQ-VIB'],
                       sizes, filename=basepath + 'eng_')
-    plot_multi_metrics(all_accs, labels=['2', '16', '32', 'OOD 16', 'OOD 32'], file_root=basepath + distinct)
+    plot_multi_metrics(all_accs, labels=['2', '16', '32', 'OOD 16', 'OOD 32'], file_root=basepath + distinct + datasplit)
     plot_multi_metrics(snap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'snap_eng_')
     plot_multi_metrics(nosnap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'nosnap_eng_')
 
 
 def run():
-    base = 'saved_models/' + fieldname + '/trainfrac1.0/' + speaker_type + '/alpha' + str(alpha) + '/' + str(num_tok) + 'tok/entropyweight' + entropyweight + '/'
+    base = 'saved_models/' + fieldname + '/trainfrac0.2/' + speaker_type + '/alpha' + str(alpha) + '/' + str(num_tok) + 'tok/klweight' + klweight + '/'
     gen_plots(base)
 
 
@@ -80,15 +97,18 @@ if __name__ == '__main__':
     # distinct = 'True'
     # candidates = [2]
     distinct = 'False'
-    candidates = [2, 16, 32]
+    candidates = [32]
+    datasplit = 'train'
+    # datasplit = 'val'
 
-    fieldname = 'all'
+    fieldname = 'topname'
 
     speaker_type = 'vq'
-    entropyweight = '0.0'
+    # klweight = '0.01'
+    klweight = '0.0'
     alpha = 10
-    num_tok = 1
-    # seeds = [1, 2]
-    seeds = [0, 1, 2, 3, 4]
+    num_tok = 4
+    seeds = [0, 1]
+    # seeds = [0, 1, 2, 3, 4]
     burnin = 0
     run()

@@ -50,14 +50,14 @@ def run_trial():
 
     train(model, train_data, val_data, viz_data, glove_data, vae=vae, savepath=savepath, comm_dim=comm_dim, fieldname=fieldname, num_epochs=num_epochs,
           batch_size=batch_size, burnin_epochs=num_burnin, val_period=val_period,
-          plot_comms_flag=False, calculate_complexity=False)
+          plot_comms_flag=False, calculate_complexity=True)
 
 
 if __name__ == '__main__':
     feature_len = 512
     settings.see_distractor = False
     num_distractors = 1
-    num_epochs = 300000  # 1000 is way too short, but it's quick for debugging.e
+    num_epochs = 100000  # 1000 is way too short, but it's quick for debugging.e
     num_burnin = num_epochs
     val_period = 10000  # How often to test on the validation set and calculate various info metrics.
     batch_size = 32  # TODO: try bigger batch size. I think it'll improve capacity measures.
@@ -96,6 +96,7 @@ if __name__ == '__main__':
     settings.supervision_weight = 0.0
     settings.hardcoded_vq = False
     settings.entropy_weight = None
+    settings.max_num_align_data = 1
 
     use_embed_tokens = False
     if use_embed_tokens:
@@ -111,28 +112,36 @@ if __name__ == '__main__':
     seeds = [i for i in range(0, 5)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
-    if comm_types == ['onehot']:
-        settings.kl_weight = 0.0
-    elif comm_types == ['vq']:
-        settings.kl_weight = 0.01
+    # if comm_types == ['onehot']:
+    #     settings.kl_weight = 0.0
+    # elif comm_types == ['vq']:
+    #     settings.kl_weight = 0.01
 
+    settings.lr = 0.001  # Default  FIXME
+    # if comm_types == ['onehot']:
+    #     settings.lr = 0.0001
+
+    entropy_weight = 0.0
     starting_weight = settings.kl_weight
-    for num_tokens in [1, 8]:
-        for alpha in [10]:
+    for num_tokens in [2]:
+        for alpha in [0.1, 1.0, 10]:
             if alpha == 0:
                 variational = True
                 # settings.kl_weight = 0.0
                 # starting_weight = 0.0
+                # if comm_types == ['vq']:
+                #     settings.lr = 0.0001
             settings.alpha = alpha
             # for entropy_weight in [0.0, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06]:
-            for entropy_weight in [0.0]:
+            for starting_weight in [0.01]:
+                settings.kl_weight = starting_weight
                 settings.entropy_weight = entropy_weight
                 for seed in seeds:
                     for speaker_type in comm_types:
-                        print("Training comm type", speaker_type, "seed", seed, "for", num_tokens, "num tokens and", alpha, "alpha")
+                        print("Training comm type", speaker_type, "seed", seed, "for", num_tokens, "num tokens and", alpha, "alpha", "klweight", settings.kl_weight)
                         random.seed(seed)
                         np.random.seed(seed)
                         torch.manual_seed(seed)
-                        settings.kl_weight = starting_weight
-                        savepath = 'saved_models/' + field_setup + '/trainfrac' + str(train_fraction) + '/' + speaker_type + '/alpha' + str(settings.alpha) + '/' + str(num_tokens) + 'tok/entropyweight' + str(settings.entropy_weight) + '/seed' + str(seed) + '/'
+                        # settings.kl_weight = starting_weight
+                        savepath = 'saved_models/' + field_setup + '/trainfrac' + str(train_fraction) + '/' + speaker_type + '/alpha' + str(settings.alpha) + '/' + str(num_tokens) + 'tok/klweight' + str(settings.kl_weight) + '/seed' + str(seed) + '/'
                         run_trial()

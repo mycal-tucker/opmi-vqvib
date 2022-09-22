@@ -6,10 +6,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score, mean_squared_error
 import random
 
 import src.settings as settings
-from src.data_utils.helper_fns import gen_batch, get_glove_embedding, get_unique_labels, get_entry_for_labels
+from src.data_utils.helper_fns import gen_batch, get_glove_embedding, get_unique_labels, get_entry_for_labels, get_unique_by_field
 from src.data_utils.read_data import get_feature_data
 from src.models.decoder import Decoder
 from src.models.listener import Listener
@@ -44,9 +45,13 @@ def evaluate(model, dataset, batch_size, vae, glove_data, fieldname, num_dist=No
     return acc, total_recons_loss
 
 
-def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, fieldname, use_top=True, num_dist=None, eng_dec=None, eng_list=None,
+def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, fieldname, eng_fieldname=None, use_top=True, num_dist=None, eng_dec=None, eng_list=None,
                           tok_to_embed=None, use_comm_idx=False, comm_map=None):
-    topwords = dataset[fieldname]
+    # topwords = dataset[fieldname]
+    unique_topnames = get_unique_by_field(dataset, 'topname')
+    if eng_fieldname is None:
+        eng_fieldname = fieldname
+    topwords = dataset[eng_fieldname]
     responses = dataset['responses']
     model.eval()
     num_nosnap_correct = 0
@@ -55,9 +60,9 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, fieldna
     num_unmatched = 0
     eng_correct = 0
     # eval_dataset_size = len(dataset)
-    eval_dataset_size = 1000
-    print("Evaluating English performance on", eval_dataset_size, "examples")
-    # TODO: batching this stuff could make things way faster. I am pretty confused by why it's so bad.
+    eval_dataset_size = 100  # How many do test inputs? Time scales linearly, basically.
+    # print("Evaluating English performance on", eval_dataset_size, "examples")
+    # TODO: batching this stuff could make things way faster.
     for targ_idx in range(eval_dataset_size):
         speaker_obs, listener_obs, labels, _ = gen_batch(dataset, 1, fieldname, vae=vae, see_distractors=settings.see_distractor, glove_data=glove_data,
                                             num_dist=num_dist, preset_targ_idx=targ_idx)
@@ -71,8 +76,12 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, fieldna
             if len(all_responses) == 1:
                 continue  # Can't use a synonym if we only know one word
             word = topword
-            while word == topword:
+            num_tries = 0
+            while word in unique_topnames and num_tries < 10:
                 word = random.choice(list(responses[targ_idx]))
+                num_tries += 1
+            if num_tries == 10:
+                continue  # Failed to find a non topname response quickly enough.
         else:
             word = topword
         # Create the embedding, and then the token from the embedding.
@@ -121,7 +130,7 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, fieldna
             prediction = eng_list(recons, listener_obs)
             pred_label = np.argmax(prediction.detach().cpu().numpy(), axis=1)
             eng_correct += np.sum(pred_label == labels)
-    print("Percent unmatched ec comms", num_unmatched / num_total)
+    # print("Percent unmatched ec comms", num_unmatched / num_total)
     return num_nosnap_correct / num_total, num_snap_correct / num_total, eng_correct / num_total
 
 
@@ -154,13 +163,13 @@ def plot_comms(model, dataset, basepath):
     plot_naming(regrouped_data, viz_method='tsne', labels=plot_labels, savepath=basepath + 'training_tsne')
 
 
-def get_embedding_alignment(model, dataset, glove_data, fieldname):
+def get_embedding_alignment(model, dataset, glove_data, fieldname, test_align_data=None):
     num_tests = 1
     comms = []
     embeddings = []
     features = []
     comm_to_id = {}
-    max_num_align_data = 1000   # FIXME
+    max_num_align_data = settings.max_num_align_data   # FIXME
     for f, word in zip(dataset['features'], dataset[fieldname]):
         speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
         speaker_obs = torch.unsqueeze(speaker_obs, 0)
@@ -194,32 +203,70 @@ def get_embedding_alignment(model, dataset, glove_data, fieldname):
     comms = np.vstack(comms)
     relevant_comms = comms
     embeddings = np.vstack(embeddings)
+    # Build a test set
+    test_comms = []
+    test_embeddings = []
+    if test_align_data is None:
+        print("WARNING!")
+        test_align_data = dataset
+    for f, word in zip(test_align_data['features'], test_align_data[fieldname]):
+    # for f, word in zip(dataset['features'], dataset[fieldname]):
+        speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
+        speaker_obs = torch.unsqueeze(speaker_obs, 0)
+        with torch.no_grad():
+            speaker_obs = speaker_obs.repeat(num_tests, 1)
+            comm, _, _ = model.speaker(speaker_obs)
+        try:
+            embedding = get_glove_embedding(glove_data, word).to_numpy()
+        except AttributeError:
+            continue
+        np_comm = np.mean(comm.detach().cpu().numpy(), axis=0)
+        test_embeddings.append(embedding)
+        test_comms.append(np_comm)
+        if len(test_embeddings) > max_num_align_data:
+            print("Breaking after", len(embeddings), "examples for word alignment")
+            break
+
+    test_comms = np.vstack(test_comms)
+    test_embeddings = np.vstack(test_embeddings)
     # Now learn two linear regressions to map to/from tokens and word embeddings.
     reg1 = LinearRegression()
     reg1.fit(relevant_comms, embeddings)
-    tok_to_embed_r2 = reg1.score(relevant_comms, embeddings)
-    print("Tok to word embedding regression score\t\t", tok_to_embed_r2)
-    # reg1.fit(comms, comms)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
+    # tok_to_embed_r2 = reg1.score(relevant_comms, embeddings)
+    train_r2 = reg1.score(relevant_comms, embeddings)
+    tok_to_embed_r2 = reg1.score(test_comms, test_embeddings)
+    pred_embeddings = reg1.predict(test_comms)
+    tok_to_embed_mse = mean_squared_error(test_embeddings, pred_embeddings)
+    # print("Train r2", train_r2)
+    # print("Test r2", tok_to_embed_r2)
+    # print("Test mse", tok_to_embed_mse)
+    # if max_num_align_data != 1:
+    #     print("Tok to word embedding regression score\t\t", tok_to_embed_r2)
     reg2 = LinearRegression()
-    reg2.fit(embeddings, comms)
-    embed_to_tok_r2 = reg2.score(embeddings, comms)
-    print("Word embedding to token regression score\t\t", embed_to_tok_r2)
-    # reg2.fit(embeddings, embeddings)  # Actually, if we just want to hardwire it in, "refit" the regression to be 1-1
-    print("Found", len(comm_to_id), "unique comm vectors!")
+    reg2 = reg2.fit(embeddings, relevant_comms)
+    train_r2 = reg2.score(embeddings, relevant_comms)
+    embed_to_tok_r2 = reg2.score(test_embeddings, test_comms)
+    pred_comms = reg2.predict(test_embeddings)
+    embed_to_tok_mse = mean_squared_error(test_comms, pred_comms)
+    # print("Train eng to ec", train_r2)
+    # print("Test eng to ec", embed_to_tok_r2)
+    # print("Test eng to ec mse", embed_to_tok_mse)
+    # if max_num_align_data != 1:
+    #     print("Word embedding to token regression score\t\t", embed_to_tok_r2)
+    # print("Found", len(comm_to_id), "unique comm vectors!")
     # Gross. Instead of regression score, pass back the number of unique vectors
 
     # Turn comm_map into comm to most common associated
     comm_modes = {}
-    for ec_comm, word_counts in comm_to_id.items():
-        best_word = None
-        max_count = 0
-        for word, count in word_counts.items():
-            if count > max_count:
-                max_count = count
-                best_word = word
-        comm_modes[ec_comm] = best_word
-
-    return reg1, reg2, tok_to_embed_r2, len(comm_to_id), comm_modes
+    # for ec_comm, word_counts in comm_to_id.items():
+    #     best_word = None
+    #     max_count = 0
+    #     for word, count in word_counts.items():
+    #         if count > max_count:
+    #             max_count = count
+    #             best_word = word
+    #     comm_modes[ec_comm] = best_word
+    return reg1, reg2, tok_to_embed_r2, embed_to_tok_r2, comm_modes
 
 
 def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data, num_cand_to_metrics, savepath,
@@ -333,7 +380,8 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
 
     criterion = nn.CrossEntropyLoss()
     # optimizer = optim.Adam(model.parameters(), lr=0.0001)  # 0.0001 is good for no recons, or for onehot things.
-    optimizer = optim.Adam(model.parameters(), lr=0.001)  # 0.001 is good for alpha 10 (and is the default)
+    # optimizer = optim.Adam(model.parameters(), lr=0.001)  # 0.001 is good for alpha 10 (and is the default)
+    optimizer = optim.Adam(model.parameters(), lr=settings.lr)
     running_acc = 0
     running_mse = 0
     # num_cand_to_metrics = {True: {2: [], 16: [], 32: []},  # Don't try many distractors when
@@ -372,17 +420,17 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
         num_total = pred_labels.size
         running_acc = running_acc * 0.95 + 0.05 * num_correct / num_total
         running_mse = running_mse * 0.95 + 0.05 * recons_loss.item()
-        if epoch % 20 == 0:
+        if epoch % 100 == 0:
             print('epoch', epoch, 'of', num_epochs)
-            print("Overall loss", loss.item())
-            print("Kl weight", settings.kl_weight)
+            # print("Overall loss", loss.item())
+            # print("Kl weight", settings.kl_weight)
             print("Running acc", running_acc)
             print("Running mse", running_mse)
-            print("Supervised loss", supervised_loss)
+            # print("Supervised loss", supervised_loss)
 
         if epoch % val_period == val_period - 1:
             eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data, num_cand_to_metrics,
-                       savepath, epoch, fieldname, calculate_complexity=calculate_complexity, plot_comms_flag=plot_comms_flag)
+                       savepath, epoch, fieldname, calculate_complexity=calculate_complexity and epoch == num_epochs - 1, plot_comms_flag=plot_comms_flag)
 
 def run():
     num_imgs = 1 if not settings.see_distractor else (num_distractors + 1)

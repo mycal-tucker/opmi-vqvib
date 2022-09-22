@@ -51,8 +51,7 @@ def run():
         checkpoint_dir = seedpath + '/' + str(last_checkpoint)
 
         decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=1)
-        if speaker_type == 'vq':
-            speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=1024, specified_tok=None,
+        if speaker_type == 'vq':            speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=1024, specified_tok=None,
                          num_simultaneous_tokens=num_tok,
                          variational=True, num_imgs=1)
         elif speaker_type == 'onehot':
@@ -70,6 +69,7 @@ def run():
         comps.append(comp)
     print(infos)
     print(comps)
+    print()
 
 
 if __name__ == '__main__':
@@ -88,14 +88,15 @@ if __name__ == '__main__':
     settings.entropy_weight = 0
     settings.kl_weight = 0
     settings.epoch = 0
+    settings.alpha = 0
 
     feature_len = 512
     fieldname = 'vg_domain'
-    speaker_type = 'onehot'
+    speaker_type = 'vq'
     comm_dim = 1024 if speaker_type == 'onehot' else 64
     entropyweight = '0.0'
     alpha = 10
-    num_tok = 1
+    num_tok = 8
     seeds = [0, 1, 2, 3, 4]
 
     glove_data = get_glove_vectors(comm_dim)
