@@ -61,7 +61,6 @@ def gen_plots(basepath):
     good_comps = []
     for c in all_complexities[0]:
         if c is not None:
-            print(c)
             good_comps.append(c)
     print("Complexities:\n", ', '.join([str(np.round(c, 3)) for c in good_comps]))
 
@@ -69,7 +68,6 @@ def gen_plots(basepath):
     good_accs = []
     for a in all_accs['vq'][0]:
         final_epoch = a[-1]
-        print(final_epoch)
         good_accs.append(final_epoch)
 
     print("Accuracies:\n", ', '.join([str(np.round(a, 3)) for a in good_accs]))
@@ -77,15 +75,15 @@ def gen_plots(basepath):
     all_complexities.append([1.9])
     all_informativeness.append([-0.20])
     sizes = [20, 20, 60]
-    plot_multi_trials([all_complexities, all_informativeness],
-                      ['VQ-VIB', 'English'],
-                      sizes, filename=basepath + 'info_plane.png')
-    plot_multi_trials([all_complexities, all_eng],
-                      ['VQ-VIB'],
-                      sizes, filename=basepath + 'eng_')
-    plot_multi_metrics(all_accs, labels=['2', '16', '32', 'OOD 16', 'OOD 32'], file_root=basepath + distinct + datasplit)
-    plot_multi_metrics(snap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'snap_eng_')
-    plot_multi_metrics(nosnap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'nosnap_eng_')
+    # plot_multi_trials([all_complexities, all_informativeness],
+    #                   ['VQ-VIB', 'English'],
+    #                   sizes, filename=basepath + 'info_plane.png')
+    # plot_multi_trials([all_complexities, all_eng],
+    #                   ['VQ-VIB'],
+    #                   sizes, filename=basepath + 'eng_')
+    # plot_multi_metrics(all_accs, labels=['2', '16', '32', 'OOD 16', 'OOD 32'], file_root=basepath + distinct + datasplit)
+    # plot_multi_metrics(snap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'snap_eng_')
+    # plot_multi_metrics(nosnap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'nosnap_eng_')
 
 
 def run():
@@ -106,9 +104,9 @@ if __name__ == '__main__':
     speaker_type = 'vq'
     klweight = '0.01'
     # klweight = '0.0'
-    alpha = 10
-    num_tok = 4
+    num_tok = 1
     # seeds = [0, 1]
     seeds = [0, 1, 2, 3, 4]
     burnin = 0
-    run()
+    for alpha in [0, 0.1, 0.5, 1, 1.5, 2, 3, 10]:
+        run()

@@ -56,7 +56,7 @@ def run_trial():
 if __name__ == '__main__':
     feature_len = 512
     settings.see_distractor = False
-    num_distractors = 1
+    num_distractors = 15
     num_epochs = 100000  # 1000 is way too short, but it's quick for debugging.e
     num_burnin = num_epochs
     val_period = 10000  # How often to test on the validation set and calculate various info metrics.
@@ -109,7 +109,7 @@ if __name__ == '__main__':
 
     num_prototypes = 1024
 
-    seeds = [i for i in range(0, 5)]
+    seeds = [i for i in range(0, 3)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
     # if comm_types == ['onehot']:
@@ -124,7 +124,7 @@ if __name__ == '__main__':
     entropy_weight = 0.0
     starting_weight = settings.kl_weight
     for num_tokens in [4]:
-        for alpha in [0.5, 1.5, 2, 3]:
+        for alpha in [0, 0.1, 1, 10]:
             if alpha == 0:
                 variational = True
                 # settings.kl_weight = 0.0

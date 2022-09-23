@@ -43,7 +43,7 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
     fig, ax = plt.subplots(figsize=(10, 5))
     idx = 0
     # color_cycle = iter(plt.cm.viridis(np.linspace(0, 1, len(multi_metrics[0]))))
-    reset_period = 4
+    reset_period = 8
     color_cycle = itertools.cycle(plt.cm.viridis(np.linspace(0, 1, 3)))
     periodx = []
     periody = []

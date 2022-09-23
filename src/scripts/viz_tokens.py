@@ -1,248 +1,68 @@
-import os
-import random
-
-import numpy as np
 import torch
-import csv
+import numpy as np
+import random
 import src.settings as settings
-from src.data_utils.helper_fns import get_unique_labels, get_entry_for_labels, get_unique_by_field, get_rand_entries
 from src.data_utils.read_data import get_feature_data, get_glove_vectors
+from src.data_utils.helper_fns import gen_batch, get_entry_for_labels, get_unique_by_field, get_rand_entries, get_unique_labels
 from src.models.decoder import Decoder
 from src.models.listener import Listener
 from src.models.mlp import MLP
 from src.models.team import Team
 from src.models.vae import VAE
 from src.models.vq import VQ
-from src.models.vq2 import VQ2
-from src.models.vq_after import VQAfter
-from src.scripts.main import eval_model, get_embedding_alignment, evaluate_with_english
-from src.utils.performance_metrics import PerformanceMetrics
-from src.utils.plotting import plot_scatter, plot_multi_trials
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
 
 
-# For a given particular setup, load and evaluate all the checkpoints
-def eval_run(basepath, num_tok, speaker_type, train_data, alignment_datasets):
-    list_of_files = os.listdir(basepath)
-    checkpoints = sorted([int(elt) for elt in list_of_files])
-
-    complexities = []
-    mses = []
-    eng_decoder = torch.load('english_vg_dec64.pt').to(settings.device)
-    eng_listener = torch.load('english_vg_list64.pt').to(settings.device)
-    # checkpoint = checkpoints[-1]
-    checkpoint = 99999
-    print("Evaluating checkpoint", checkpoint)
-    # if checkpoint != 19999:
-    #     print("Skipping checkpoint", checkpoint)
-    #     return
-    # print("\n\n\nCheckpoint", checkpoint)
-    # Load the model
-    try:
-        team = torch.load(basepath + str(checkpoint) + '/model_obj.pt')
-    except FileNotFoundError:
-        print("Failed to load the preferred full model; falling back to statedict.")
-        feature_len = 512
-        if speaker_type == 'vq':
-            speaker = VQ(feature_len, comm_dim, num_layers=3, num_protos=1024, specified_tok=None,
-                         num_simultaneous_tokens=num_tok,
-                         variational=True, num_imgs=1)
-        elif speaker_type == 'onehot':
-            speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=True, num_simultaneous_tokens=num_tok,
-                          variational=True, num_imgs=1)
-        listener = Listener(feature_len)
-        decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=1)
-        team = Team(speaker, listener, decoder)
-        team.load_state_dict(torch.load(basepath + str(checkpoint) + '/model.pt'))
-        team.to(settings.device)
-    # And evaluate it
-    metric = PerformanceMetrics.from_file(basepath + str(checkpoint) + '/train_True_2_metrics')
-    comps = metric.complexities
-    if comps[-1] is not None:
-        complexities.append(comps[-1])
-        mses.append(-1 * metric.recons[-1])
-    else:  # If we didn't calculate complexity during the training run
-        print("Running full eval to get complexity")
-        mses.append(None)
-        complexities.append(None)
-        # eval_model(team, vae, comm_dim, train_data, train_data, None, glove_data,
-        #            num_cand_to_metrics=num_cand_to_metrics, savepath=basepath, epoch=checkpoint,
-        #            calculate_complexity=True, alignment_dataset=alignment_dataset, save_model=False)
-        # metric = PerformanceMetrics.from_file(basepath + str(checkpoint) + '/train_2_metrics')
-        # complexities.append(metric.complexities[-1])
-    top_eng_to_ec_snap_accs = []
-    top_eng_to_ec_nosnap_accs = []
-    top_ec_to_eng_comm_id_accs = []
-    top_ec_to_eng_accs = []
-    tok_to_embed_r2s = []
-    embed_to_tok_r2s = []
-    for j, align_data in enumerate(alignment_datasets):
-        for use_comm_idx in [False]:
-            use_top = True
-            dummy_eng = english_fieldname
-            if english_fieldname == 'responses':
-                use_top = False
-                dummy_eng = 'topname'
-            tok_to_embed, embed_to_tok, tok_to_embed_r2, embed_to_tok_r2, comm_map = get_embedding_alignment(team, align_data, glove_data,
-                                                                                 fieldname=alignment_fieldname)
-            nosnap, snap, ec_to_eng = evaluate_with_english(team, train_data, vae, embed_to_tok, glove_data,
-                                                            fieldname=experiment_fieldname,
-                                                            eng_fieldname=dummy_eng,
-                                                            use_top=use_top,
-                                                            # num_dist=settings.num_distractors,
-                                                            eng_dec=eng_decoder,
-                                                            eng_list=eng_listener,
-                                                            tok_to_embed=tok_to_embed,
-                                                            use_comm_idx=use_comm_idx, comm_map=comm_map)
-            if use_comm_idx:
-                top_ec_to_eng_comm_id_accs.append(ec_to_eng)
-            else:
-                top_ec_to_eng_accs.append(ec_to_eng)
-                # Just to avoid duplicates, pick either use comm idx or not for this.
-                top_eng_to_ec_nosnap_accs.append(nosnap)
-                top_eng_to_ec_snap_accs.append(snap)
-                tok_to_embed_r2s.append(tok_to_embed_r2)
-                embed_to_tok_r2s.append(embed_to_tok_r2)
-    num_runs = len(alignment_datasets)
-    return complexities[-1],\
-           (np.median(top_ec_to_eng_comm_id_accs), np.std(top_ec_to_eng_comm_id_accs) / np.sqrt(num_runs)),\
-           (np.median(top_ec_to_eng_accs), np.std(top_ec_to_eng_accs) / np.sqrt(num_runs)),\
-           (np.median(top_eng_to_ec_nosnap_accs), np.std(top_eng_to_ec_nosnap_accs) / np.sqrt(num_runs)),\
-           (np.median(top_eng_to_ec_snap_accs), np.std(top_eng_to_ec_snap_accs) / np.sqrt(num_runs)),\
-           (np.median(tok_to_embed_r2s), np.std(tok_to_embed_r2s) / np.sqrt(num_runs)),\
-           (np.median(embed_to_tok_r2s), np.std(embed_to_tok_r2s) / np.sqrt(num_runs))
+def get_ec_words(dataset, team):
+    # Given a dataset and a team, returns a list of EC comms for some entries in the data,
+    # as well as the English words for each of those entries.
+    comms = []
+    words = []
+    num_examples = 100
+    for targ_idx in range(num_examples):
+        word = dataset[fieldname][targ_idx]
+        if word in words:
+            continue
+        words.append(word)
+        speaker_obs, _, _, _ = gen_batch(dataset, 1, fieldname, vae=vae,
+                                         see_distractors=settings.see_distractor, glove_data=glove_data,
+                                         num_dist=0, preset_targ_idx=targ_idx)
+        # Now get the EC for that speaker obs
+        with torch.no_grad():
+            comm, _, _ = team.speaker(speaker_obs)
+            comms.append(comm.detach().cpu().numpy())
+    return np.array(comms).squeeze(1), words
 
 
-# Iterate over combinations of hyperparameters and seeds.
 def run():
     base = 'saved_models/topname/trainfrac0.2/'
-    # base = 'saved_models/all/trainfrac1.0/'
-    # base = 'saved_models/vg_domain/trainfrac1.0/'
-    for speaker_type in model_types:
-        for alpha in alphas:
-            for num_tok in num_tokens:
-                all_comps = []
-                all_top_ec_to_eng_comm_ids = [[], []]  # Mean, std.
-                all_top_ec_to_eng = [[], []]
-                all_top_eng_to_ec_nosnap = [[], []]
-                all_top_eng_to_ec_snap = [[], []]
-                all_tok_to_embed_r2 = [[], []]
-                all_embed_to_tok_r2 = [[], []]
-                labels = []
-                filename = '_'.join([str(num_examples), str(num_tok), alignment_fieldname, experiment_fieldname, english_fieldname])
-                with open(filename + '.csv', 'w', newline='') as f:
-                    writer = csv.writer(f, delimiter=',')
-                    writer.writerow(['lambda C', 'Seed', 'Complexity',
-                                     'EC to Eng Comm Id Mean', 'EC to Eng Comm Id Std',
-                                     'EC to Eng mean', 'EC to Eng Std',
-                                     'Eng to EC nosnap mean', 'Eng to EC nosnap Std',
-                                     'Eng to EC snap mean', 'Eng to EC snap Std',
-                                     'Tok to Embed r2 mean', 'Tok to Embed r2 Std',
-                                     'Embed to Tok r2 mean', 'Embed to Tok Std'])
-                for kl_weight in kl_weights:
-                    comps = []
-                    top_ec_to_eng_comm_ids = []
-                    top_ec_to_engs = []
-                    top_eng_to_ecs_nosnaps = []
-                    top_eng_to_ecs_snaps = []
-                    tok_to_embed_r2s = []
-                    embed_to_tok_r2s = []
-                    basepath = '/'.join([base, speaker_type, 'alpha' + str(alpha), str(num_tok) + 'tok', 'klweight' + str(kl_weight)]) + '/'
-                    for s in seeds:
-                        print("Seed", s)
-                        random.seed(s)
-                        np.random.seed(s)
-                        torch.manual_seed(s)
-                        if s in seed_to_state.keys():
-                            print("Loading a saved state!")
-                            np.random.set_state(seed_to_state.get(s))
-                        else:
-                            glove_data = get_glove_vectors(embed_dim)  # Need to do this for random seed stuff
-                        train_data = get_feature_data(features_filename,
-                                                      selected_fraction=0.2)
-                        unique_topnames = get_unique_by_field(train_data, alignment_fieldname)
-                        print(len(unique_topnames), "unique classes for fieldname", alignment_fieldname)
-                        alignment_datasets = [get_rand_entries(train_data, num_examples) for _ in range(num_rand_trial)]
+    basepath = '/'.join([base, 'vq', 'alpha' + str(alpha), str(num_tok) + 'tok', 'klweight' + str(kl_weight), 'seed' + str(test_seed)]) + '/'
 
-                        comp, top_ec_to_eng_comm_id, top_ec_to_eng, top_eng_to_ec_nosnap, top_eng_to_ec_snap, tok_to_embed_r2, embed_to_tok_r2 = eval_run(basepath + '/seed' + str(s) + '/', num_tok, speaker_type, train_data, alignment_datasets)
-                        comps.append(comp)
-                        top_ec_to_eng_comm_ids.append(top_ec_to_eng_comm_id)
-                        top_ec_to_engs.append(top_ec_to_eng)
-                        top_eng_to_ecs_nosnaps.append(top_eng_to_ec_nosnap)
-                        top_eng_to_ecs_snaps.append(top_eng_to_ec_snap)
-                        tok_to_embed_r2s.append(tok_to_embed_r2)
-                        embed_to_tok_r2s.append(embed_to_tok_r2)
-                    all_comps.append(comps)
-                    for i in range(2):
-                        all_top_ec_to_eng_comm_ids[i].append([elt[i] for elt in top_ec_to_eng_comm_ids])
-                        all_top_ec_to_eng[i].append([elt[i] for elt in top_ec_to_engs])
-                        all_top_eng_to_ec_nosnap[i].append([elt[i] for elt in top_eng_to_ecs_nosnaps])
-                        all_top_eng_to_ec_snap[i].append([elt[i] for elt in top_eng_to_ecs_snaps])
-                        all_tok_to_embed_r2[i].append([elt[i] for elt in tok_to_embed_r2s])
-                        all_embed_to_tok_r2[i].append([elt[i] for elt in embed_to_tok_r2s])
-                    labels.append('$\lambda_C =$ ' + str(kl_weight))
-                    # plot_multi_trials([all_comps, all_top_ec_to_eng_comm_ids[0], all_top_ec_to_eng_comm_ids[1]],
-                    #                   labels,
-                    #                   [size for _ in labels],
-                    #                   ylabel='Utility EC to Eng Top Comm ID',
-                    #                   filename='/'.join([basepath + '../', '_'.join([rand_string, str(num_examples), str(num_tok), alignment_fieldname, experiment_fieldname, english_fieldname, 'EC_to_Eng_Top_Comm_ID'])]))
-                    # plot_multi_trials([all_comps, all_top_ec_to_eng[0], all_top_ec_to_eng[1]],
-                    #                   labels,
-                    #                   [size for _ in labels],
-                    #                   ylabel='Utility EC to Eng Top',
-                    #                   filename='/'.join([basepath + '../', '_'.join([rand_string, str(num_examples), str(num_tok), alignment_fieldname, experiment_fieldname, english_fieldname, 'EC_to_Eng_Top'])]))
-                    # plot_multi_trials([all_comps, all_top_eng_to_ec_nosnap[0], all_top_eng_to_ec_nosnap[1]],
-                    #                   labels,
-                    #                   [size for _ in labels],
-                    #                   ylabel='Utility Eng to EC Top No Snap',
-                    #                   filename='/'.join([basepath + '../', '_'.join([rand_string, str(num_examples), str(num_tok), alignment_fieldname, experiment_fieldname, english_fieldname, 'Eng_to_EC_Top_Nosnap'])]))
-                    # plot_multi_trials([all_comps, all_top_eng_to_ec_snap[0], all_top_eng_to_ec_snap[1]],
-                    #                   labels,
-                    #                   [size for _ in labels],
-                    #                   ylabel='Utility Eng to EC TopSnap',
-                    #                   filename='/'.join([basepath + '../', '_'.join([rand_string, str(num_examples), str(num_tok), alignment_fieldname, experiment_fieldname, english_fieldname, 'Eng_to_EC_Top_Snap'])]))
-                    # plot_multi_trials([all_comps, all_tok_to_embed_r2[0], all_tok_to_embed_r2[1]],
-                    #                   labels,
-                    #                   [size for _ in labels],
-                    #                   ylabel='Tok to Embed r2',
-                    #                   filename='/'.join([basepath + '../', '_'.join([rand_string, str(num_examples), str(num_tok), alignment_fieldname, experiment_fieldname, english_fieldname, 'tok_to_embed_r2'])]))
-                    # plot_multi_trials([all_comps, all_embed_to_tok_r2[0], all_embed_to_tok_r2[1]],
-                    #                   labels,
-                    #                   [size for _ in labels],
-                    #                   ylabel='Embed to Tok r2',
-                    #                   filename='/'.join([basepath + '../', '_'.join([rand_string, str(num_examples), str(num_tok), alignment_fieldname, experiment_fieldname, english_fieldname, 'embed_to_tok_r2'])]))
-                    with open(filename + '.csv', 'a', newline='') as f:
-                        writer = csv.writer(f, delimiter=',')
-                        for i in range(len(seeds)):
-                            writer.writerow([kl_weight, seeds[i], np.round(comps[i], 3),
-                                             np.round(top_ec_to_eng_comm_ids[i][0], 3),
-                                             np.round(top_ec_to_eng_comm_ids[i][1], 3),
-                                             np.round(top_ec_to_engs[i][0], 3),
-                                             np.round(top_ec_to_engs[i][1], 3),
-                                             np.round(top_eng_to_ecs_nosnaps[i][0], 3),
-                                             np.round(top_eng_to_ecs_nosnaps[i][1], 3),
-                                             np.round(top_eng_to_ecs_snaps[i][0], 3),
-                                             np.round(top_eng_to_ecs_snaps[i][1], 3),
-                                             np.round(tok_to_embed_r2s[i][0], 3),
-                                             np.round(tok_to_embed_r2s[i][1], 3),
-                                             np.round(embed_to_tok_r2s[i][0], 3),
-                                             np.round(embed_to_tok_r2s[i][1], 3)])
-                print("Num align data:", num_examples)
-                print("Alpha:", alpha)
-                print("Alignment fieldname:", alignment_fieldname)
-                print("Expt fieldname:", experiment_fieldname)
-                print("English fieldname:", english_fieldname)
-                print("Num distractors:", settings.num_distractors)
-                print("KL Weights:\n", kl_weights)
-                print("Complexities\n", [np.round(e, 3).tolist() for e in all_comps])
-                # print("EC to Eng Comm id mean\n", np.round(all_top_ec_to_eng_comm_ids[0], 3))
-                # print("EC to Eng Comm id std\n", np.round(all_top_ec_to_eng_comm_ids[1], 3))
-                # print("EC to Eng mean\n", np.round(all_top_ec_to_eng[0], 3))
-                # print("EC to Eng std\n", np.round(all_top_ec_to_eng[1], 3))
-                print("Eng to EC nosnap mean\n", np.round(all_top_eng_to_ec_nosnap[0], 3).tolist())
-                print("Eng to EC nosnap std\n", np.round(all_top_eng_to_ec_nosnap[1], 3))
-                # print("Eng to EC snap mean\n", np.round(all_top_eng_to_ec_snap[0], 3))
-                # print("Eng to EC snap std\n", np.round(all_top_eng_to_ec_snap[1], 3))
-                print("\n\n\n")
+    random.seed(test_seed)
+    np.random.seed(test_seed)
+    torch.manual_seed(test_seed)
+    train_split = get_feature_data(features_filename,
+                                   selected_fraction=0.2)
+    train_topnames, train_responses = get_unique_labels(train_split)
+    ood_data = get_feature_data(features_filename, excluded_names=train_responses)
+    # Now load the model
+    team = torch.load(basepath + str(99999) + '/model_obj.pt')
+    train_comms, train_words = get_ec_words(train_split, team)
+    ood_comms, ood_words = get_ec_words(ood_data, team)
+    pca = PCA(n_components=2)  # For viz
+    train_pca_comms = pca.fit_transform(train_comms)
+
+    fig, ax = plt.subplots()
+    ax.scatter(train_pca_comms[:, 0], train_pca_comms[:, 1], c='b')
+    for i, word in enumerate(train_words):
+        ax.annotate(word, (train_pca_comms[i, 0], train_pca_comms[i, 1]))
+    ood_pca_comms = pca.transform(ood_comms)
+    ax.scatter(ood_pca_comms[:, 0], ood_pca_comms[:, 1], c='r')
+    for i, word in enumerate(ood_words):
+        ax.annotate(word, (ood_pca_comms[i, 0], ood_pca_comms[i, 1]))
+    plt.show()
+    # TODO: repeat for ood data. And maybe color things differently or something.
 
 
 if __name__ == '__main__':
@@ -250,9 +70,6 @@ if __name__ == '__main__':
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-
-    num_rand_trial = 10
-
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.see_distractor = False
     settings.learned_marginal = False
@@ -262,17 +79,28 @@ if __name__ == '__main__':
     settings.kl_weight = 0.0
     settings.epoch = 0
     settings.alpha = 0
-    settings.distinct_words = False  # FIXME
+    settings.distinct_words = False
     settings.entropy_weight = 0.0
-    settings.max_num_align_data = 10000
+    settings.max_num_align_data = 1
 
     comm_dim = 64
     features_filename = 'data/features_nobox.csv'
-
     # Load the dataset
     embed_dim = 64
 
     glove_data = get_glove_vectors(embed_dim)
+
+    vae = VAE(512, 32)
+    vae_beta = 0.001
+    vae.load_state_dict(torch.load('saved_models/vae' + str(vae_beta) + '.pt'))
+    vae.to(settings.device)
+
+    kl_weight = 0.01
+    alpha = 10
+    test_seed = 0
+    num_tok = 4
+
+    fieldname = 'topname'
 
     seed_to_state = {0: ('MT19937', np.array([4211200251,    1495080, 1333446588, 2357801020, 1130639478,
         487638447, 3725283550,   39146648, 1065937415, 4255066115,
@@ -900,27 +728,4 @@ if __name__ == '__main__':
        2507354097, 2606355560,  540677909,  439643892, 1405407088,
        3586957810, 2887759163, 3028309908, 4140682456]), 360, 0, 0.0)
 }
-
-    # Use hardcoded subsets based on index
-    # num_align_data = 32
-    # alignment_dataset = train_data[:num_align_data]
-    # alignment_datasets = [train_data[i * num_align_data: (i + 1) * num_align_data] for i in range(3)]
-    # Use a dataset generated as one label for each English topname or vg_domain label
-    for num_dist in [1, 15, 31]:
-        settings.num_distractors = num_dist
-        for num_examples in [100]:
-            for alignment_fieldname in ['topname']:
-                for experiment_fieldname in ['topname']:
-                    for english_fieldname in ['topname']:
-                        vae = VAE(512, 32)
-                        vae_beta = 0.001
-                        vae.load_state_dict(torch.load('saved_models/vae' + str(vae_beta) + '.pt'))
-                        vae.to(settings.device)
-
-                        model_types = ['vq']
-                        # seeds = [i for i in range(10)]
-                        seeds = [i for i in range(0, 5)]
-                        kl_weights = [0.01]
-                        alphas = [0, 0.1, 0.5, 1, 1.5, 2, 3]
-                        num_tokens = [1]
-                        run()
+    run()

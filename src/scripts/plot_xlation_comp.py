@@ -23,6 +23,9 @@ def run():
     # sizes.append(small_size)
     # colors.append('xkcd:blue')
 
+    ############################################################################
+    #####           N = 4
+    ############################################################################
     labels.append('$\lambda_I = 0.0; n = 4$')
     utilities2_100.append([0.825, 0.525, 0.81, 0.485, 0.435])
     utilities16_100.append([0.225, 0.06, 0.22, 0.065, 0.025])
@@ -41,6 +44,14 @@ def run():
     sizes.append(small_size)
     colors.append(0.1)
 
+    labels.append('$\lambda_I = 0.5; n = 4$')
+    utilities2_100.append([0.92, 0.865, 0.87, 0.84, 0.895])
+    utilities16_100.append([0.525, 0.295, 0.375, 0.275, 0.43])
+    utilities32_100.append([0.285, 0.15, 0.225, 0.165, 0.265])
+    comps.append([2.382, 2.199, 2.216, 2.225, 2.125])
+    sizes.append(small_size)
+    colors.append('xkcd:blue')
+
     labels.append('$\lambda_I = 1.0; n = 4$')
     utilities2_100.append([0.93, 0.9,  0.87, 0.84, 0.89])
     utilities16_100.append([0.51, 0.37, 0.41, 0.31, 0.44])
@@ -49,6 +60,30 @@ def run():
     comps.append([2.734, 2.652, 2.683, 2.763, 2.809])
     sizes.append(small_size)
     colors.append(1)
+
+    labels.append('$\lambda_I = 1.5; n = 4$')
+    utilities2_100.append([0.925, 0.885, 0.88, 0.87, 0.905])
+    utilities16_100.append([0.545, 0.345, 0.4, 0.315, 0.455])
+    utilities32_100.append([0.33, 0.2, 0.26, 0.21, 0.29])
+    comps.append([2.962, 2.748, 3.395, 2.98, 2.942])
+    sizes.append(small_size)
+    colors.append('xkcd:blue')
+
+    labels.append('$\lambda_I = 2.0; n = 4$')
+    utilities2_100.append([0.93, 0.88, 0.89, 0.855, 0.9])
+    utilities16_100.append([0.545, 0.325, 0.395, 0.3, 0.455])
+    utilities32_100.append([0.33, 0.205, 0.265, 0.16, 0.28])
+    comps.append([3.596, 3.426, 3.096, 3.679, 2.883])
+    sizes.append(small_size)
+    colors.append('xkcd:blue')
+
+    labels.append('$\lambda_I = 3.0; n = 4$')
+    utilities2_100.append([0.94, 0.885, 0.89, 0.88, 0.915])
+    utilities16_100.append([0.575, 0.325, 0.415, 0.335, 0.475])
+    utilities32_100.append([0.36, 0.185, 0.27, 0.22, 0.295])
+    comps.append([3.123, 3.455, 3.419, 3.86, 3.31])
+    sizes.append(small_size)
+    colors.append('xkcd:blue')
 
     labels.append('$\lambda_I = 10; n = 4$')
     utilities2_100.append([0.95, 0.88, 0.89, 0.87, 0.91])
