@@ -30,6 +30,7 @@ def eval_run(basepath, num_tok, speaker_type, train_data, alignment_datasets):
     eng_decoder = torch.load('english_vg_dec64.pt').to(settings.device)
     eng_listener = torch.load('english_vg_list64.pt').to(settings.device)
     # checkpoint = checkpoints[-1]
+    # checkpoint = 19999
     checkpoint = 99999
     print("Evaluating checkpoint", checkpoint)
     # if checkpoint != 19999:
@@ -57,6 +58,7 @@ def eval_run(basepath, num_tok, speaker_type, train_data, alignment_datasets):
     # And evaluate it
     metric = PerformanceMetrics.from_file(basepath + str(checkpoint) + '/train_True_2_metrics')
     comps = metric.complexities
+    print("Comps", comps)
     if comps[-1] is not None:
         complexities.append(comps[-1])
         mses.append(-1 * metric.recons[-1])
@@ -89,7 +91,8 @@ def eval_run(basepath, num_tok, speaker_type, train_data, alignment_datasets):
                                                             eng_fieldname=dummy_eng,
                                                             use_top=use_top,
                                                             # num_dist=settings.num_distractors,
-                                                            eng_dec=eng_decoder,
+                                                            # eng_dec=eng_decoder,
+                                                            eng_dec=None,  # Set to None because we don't want to bother
                                                             eng_list=eng_listener,
                                                             tok_to_embed=tok_to_embed,
                                                             use_comm_idx=use_comm_idx, comm_map=comm_map)
@@ -267,6 +270,7 @@ if __name__ == '__main__':
     settings.max_num_align_data = 10000
 
     comm_dim = 64
+    # comm_dim = 1024
     features_filename = 'data/features_nobox.csv'
 
     # Load the dataset
@@ -909,18 +913,24 @@ if __name__ == '__main__':
     for num_dist in [1, 15, 31]:
         settings.num_distractors = num_dist
         for num_examples in [100]:
-            for alignment_fieldname in ['topname']:
+            for alignment_fieldname in ['topname']:  # What data we use to train the translator
                 for experiment_fieldname in ['topname']:
-                    for english_fieldname in ['topname']:
+                    for english_fieldname in ['topname']:  # What the english speaker outputs
                         vae = VAE(512, 32)
                         vae_beta = 0.001
                         vae.load_state_dict(torch.load('saved_models/vae' + str(vae_beta) + '.pt'))
                         vae.to(settings.device)
 
                         model_types = ['vq']
+                        # model_types = ['proto']
                         # seeds = [i for i in range(10)]
                         seeds = [i for i in range(0, 5)]
-                        kl_weights = [0.01]
-                        alphas = [0, 0.1, 0.5, 1, 1.5, 2, 3]
-                        num_tokens = [1]
+                        kl_weights = [0.01]  # For VQ-VIB
+                        # kl_weights = [0.0]
+                        alphas = [0, 0.1, 0.5, 1, 1.5, 2, 3, 10]  # For VQ-VIB
+                        # alphas = [0.1, 1, 10, 100]
+                        # alphas = [0.1]
+                        # alphas = [10]
+                        # alphas = [0.5, 1.5, 2, 3]
+                        num_tokens = [16]
                         run()

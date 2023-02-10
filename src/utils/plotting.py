@@ -42,43 +42,83 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
     plt.rc('font', **font)
     fig, ax = plt.subplots(figsize=(10, 5))
     idx = 0
-    # color_cycle = iter(plt.cm.viridis(np.linspace(0, 1, len(multi_metrics[0]))))
+
+    annotations = []
+    # annotations = ['$\lambda_I=0.1;$\n$n=1$',
+    #                '$\lambda_I=0.1;$\n$n=4$',
+    #                '$\lambda_I=1.0;$\n$n=1$',
+    #                '$\lambda_I=1.0;$\n$n=4$']
     reset_period = 8
-    color_cycle = itertools.cycle(plt.cm.viridis(np.linspace(0, 1, 3)))
+    color_cycle = itertools.cycle(plt.cm.magma(np.linspace(0, 1, 4)))
+    shape_cycle = itertools.cycle(['o', 's', 'x'])
     periodx = []
     periody = []
+    periodx_std = []
+    periody_std = []
+    plot_eng_comp = False
     for metric_x, metric_y, label, s in zip(multi_metrics[0], multi_metrics[1], series_labels, sizes):
+        if idx % reset_period == 0:
+            c = next(color_cycle)
+            m = next(shape_cycle)
+            periodx = []
+            periody = []
+            periodx_std = []
+            periody_std = []
+        if colors is not None:
+            c = colors[idx]
+
         yerr = multi_metrics[2][idx] if len(multi_metrics) == 3 else None
         # Raw data version
-        # pcm = ax.scatter(metric_x, metric_y, s=s, label=label, color=next(color_cycle))
+        # pcm = ax.scatter(metric_x, metric_y, s=s, label=label)
+        # pcm = ax.scatter(metric_x, metric_y, s=50, color=c, alpha=0.5)
+
+
 
         # Error-bar version
         xstd = np.std(metric_x)
         ystd = np.std(metric_y)
-        if idx % reset_period == 0:
-            c = next(color_cycle)
-            periodx = []
-            periody = []
         xmean = np.mean(metric_x)
         ymean = np.mean(metric_y)
         periodx.append(xmean)
         periody.append(ymean)
-        pcm = ax.scatter(xmean, ymean, s=s, label=label, color=c)
+        periody_std.append(xstd)
+        periodx_std.append(xstd)
+        pcm = ax.scatter(xmean, ymean, s=s, label=label, color=c, marker=m)
         plt.errorbar(xmean, ymean, xerr=xstd, yerr=ystd, color=c)
         # And add a dashed line between the series
-        plt.plot(periodx, periody, 'k--', alpha=0.5)
+        if colors is None:
+            plt.plot(periodx, periody, 'k--', alpha=1.0)
+            print()
+            for i in range(len(periodx)):
+                print(str(periodx[i]) + " (" + str(periodx_std[i]) + ")")
+                # print(str(periody[i]) + " (" + str(periody_std[i]) + ")")
         if yerr is not None:
             plt.errorbar(metric_x, metric_y, yerr=yerr, fmt='o')
+        if idx < len(annotations):
+            xdiff = 0.1 if idx != 1 else 0
+            ax.annotate(annotations[idx], (xmean - xdiff, ymean - 0.2))
         idx += 1
     xlabel = xlabel if xlabel is not None else 'Complexity (nats)'
-    plt.xlabel(xlabel)
+    # xlabel = xlabel if xlabel is not None else '$\lambda_I$'
+    if plot_eng_comp:
+        # plt.axvline(x=1.9, color='g')
+        # ax.annotate('Eng. topname', (1.95, 0.05), color='g')
+        plt.axvline(x=1.4, color='g')
+        ax.annotate('VG label', (1.45, 0.01), color='g')
+    # ax.annotate('a)', (1.0, -0.15))
+    # ax.annotate('b)', (1.0, 0.9))
+    plt.xlabel(xlabel, size=30)
     plt.ylabel(ylabel)
-    # plt.ylim(0.5, 1.0)
-    plt.legend()
+    plt.ylim(0.0, 1.0)
+    plt.xlim(0.0, 5.5)
+    # plt.xlim(0.0, 1.0)
+    plt.legend(loc='upper left')
+    # plt.xscale("log")
+    # plt.legend(loc='lower right')
     plt.tight_layout()
     print("Saving to", filename)
     if filename is not None:
-        plt.savefig(filename)
+        plt.savefig(filename, dpi=300)
     else:
         plt.show()
     plt.close()
@@ -116,12 +156,12 @@ def plot_multi_metrics(multi_metrics, labels=None, file_root=''):  # TODO: refac
             std = np.std(np.vstack(overalls[eval_idx]), axis=0)
             np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
             # print("Epoch", epochs)
-            print("Median overall", ", ".join([str(elt)[:5] for elt in mean_overall]))
-            print("Std overall", ", ".join([str(elt / np.sqrt(5))[:5] for elt in std]))
+            # print("Median overall", ", ".join([str(elt)[:5] for elt in mean_overall]))
+            # print("Std overall", ", ".join([str(elt / np.sqrt(5))[:5] for elt in std]))
             plt.plot(epochs, mean_overall, color, linestyle=linestyle, label=labels[eval_idx])
-            print('\n\n\n')
-            for a, b, c in zip(epochs, mean_overall, std):
-                print(' '.join([str(np.round(a, 3)), str(np.round(b, 3)), str(np.round(c / np.sqrt(5), 3))]))
+            # print('\n\n\n')
+            # for a, b, c in zip(epochs, mean_overall, std):
+            #     print(' '.join([str(np.round(a, 3)), str(np.round(b, 3)), str(np.round(c / np.sqrt(5), 3))]))
     plt.legend(loc='lower right')
     plt.xlabel('Training epoch')
     plt.ylabel('Success rate')

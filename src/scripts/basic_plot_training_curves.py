@@ -10,39 +10,36 @@ def run():
     colors = []
     markers = []
 
-    basic_epoch = [9999, 19999, 29999, 39999, 49999]
+    basic_epoch = [4999, 9999, 14999, 19999]
 
-    # VG Domain VQ alpha0 1tok
-    labels.append('VQ $\lambda_I=0$ 1tok')
+    labels.append('$\lambda_I=0.1; n=1$')
     epochs.append(basic_epoch)
-    utilities.append([0.875, 0.898, 0.897, 0.897, 0.894])
-    stds.append([0.068, 0.072, 0.069, 0.069, 0.069])
+    utilities.append([0.503, 0.779, 0.854, 0.861])
+    stds.append([0.003, 0.005, 0.003, 0.002])
     colors.append('xkcd:green')
     markers.append('s')
 
-    # VG Domain VQ alpha10 1tok
-    labels.append('VQ $\lambda_I=10$ 1tok')
+    labels.append('$\lambda_I=1.0; n=1$')
     epochs.append(basic_epoch)
-    utilities.append([0.879, 0.932, 0.937, 0.946, 0.946])
-    stds.append([0.004, 0.002, 0.003, 0.002, 0.001])
+    utilities.append([0.861, 0.894, 0.916, 0.923])
+    stds.append([0.004, 0.003, 0.004, 0.002])
     colors.append('xkcd:teal')
     markers.append('o')
 
-    # VG Domain VQ alpha0 8tok
-    labels.append('VQ $\lambda_I=0$ 8tok')
+    labels.append('$\lambda_I=0.1; n=4$')
     epochs.append(basic_epoch)
-    utilities.append([0.924, 0.953, 0.964, 0.961, 0.967])
-    stds.append([0.006, 0.007, 0.003, 0.003, 0.002])
-    colors.append('xkcd:salmon')
+    utilities.append([0.810, 0.884, 0.878, 0.878])
+    stds.append([0.020, 0.002, 0.005, 0.005])
+    colors.append('xkcd:orange')
     markers.append('s')
 
-    # VG Domain VQ alpha10 8tok
-    labels.append('VQ $\lambda_I=10$ 8tok')
+    labels.append('$\lambda_I=1.0; n=4$')
     epochs.append(basic_epoch)
-    utilities.append([0.948, 0.985, 0.992, 0.996, 0.997])
-    stds.append([0.004, 0.001, 0.001, 0.000, 0.000])
-    colors.append('xkcd:magenta')
+    utilities.append([0.929, 0.945, 0.943, 0.954])
+    stds.append([0.004, 0.002, 0.001, 0.003])
+    colors.append('xkcd:red')
     markers.append('o')
+
 
     font = {'family': 'normal',
             'size': 20}
@@ -53,11 +50,11 @@ def run():
     for l, e, u, s, c, m in zip(labels, epochs, utilities, stds, colors, markers):
         plt.errorbar(e, u, yerr=s, c=c, label=l, marker=m)
     plt.xlabel('Epoch')
-    plt.ylabel('Percent Accuracy')
-    plt.ylim(0.80, 1.0)
-    # plt.legend(loc='lower right')
+    plt.ylabel('Utility')
+    plt.ylim(0.65, 1.0)
+    plt.legend(loc='lower right')
     plt.tight_layout()
-    plt.savefig('/home/mycal/trainingcurves.png')
+    plt.savefig('trainingcurves.png')
     plt.show()
 
 

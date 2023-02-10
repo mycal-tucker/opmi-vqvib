@@ -1,11 +1,12 @@
 import src.settings as settings
-from src.data_utils.helper_fns import get_unique_labels, get_all_embeddings
+from src.data_utils.helper_fns import get_unique_labels, get_all_embeddings, get_unique_by_field
 from src.data_utils.read_data import get_feature_data, get_glove_vectors
 from src.models.decoder import Decoder
 from src.models.listener import Listener
 from src.models.mlp import MLP
 from src.models.team import Team
 from src.models.vq import VQ
+from src.models.proto import ProtoNetwork
 from src.models.vq_after import VQAfter
 import numpy as np
 from src.models.vae import VAE
@@ -18,6 +19,8 @@ def run_trial():
     # Load data
     glove_data = get_glove_vectors(comm_dim)
     train_data = get_feature_data(features_filename, selected_fraction=train_fraction)
+    vgs = get_unique_by_field(train_data, 'vg_domain')
+    print("Vgs", vgs)
     train_topnames, train_responses = get_unique_labels(train_data)
     if train_fraction == 1.0:
         val_data = train_data
@@ -43,6 +46,8 @@ def run_trial():
     elif speaker_type == 'vq_after':
         speaker = VQAfter(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, specified_tok=all_embeddings,
                      num_simultaneous_tokens=num_tokens, variational=variational, num_imgs=num_imgs)
+    elif speaker_type == 'proto':
+        speaker = ProtoNetwork(feature_len, comm_dim, num_layers=3, num_protos=num_prototypes, variational=True)
     listener = Listener(feature_len)
     decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=num_imgs)
     model = Team(speaker, listener, decoder)
@@ -56,10 +61,12 @@ def run_trial():
 if __name__ == '__main__':
     feature_len = 512
     settings.see_distractor = False
-    num_distractors = 15
-    num_epochs = 100000  # 1000 is way too short, but it's quick for debugging.e
+    num_distractors = 1
+    num_epochs = 100000  # For hold-out
+    # num_epochs = 20000  # 1000 is way too short, but it's quick for debugging.e
     num_burnin = num_epochs
-    val_period = 10000  # How often to test on the validation set and calculate various info metrics.
+    # val_period = 10000  # For holdout
+    val_period = 5000  # How often to test on the validation set and calculate various info metrics.
     batch_size = 32  # TODO: try bigger batch size. I think it'll improve capacity measures.
     comm_dim = 64  # Normally, 64. But for onehot, make it 1024?
     features_filename = 'data/features_nobox.csv'
@@ -76,16 +83,16 @@ if __name__ == '__main__':
     train_fraction = 0.2
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # settings.kl_weight = 0.001  # For cont
-    # settings.kl_weight = 0.01  # For VQ 1 token, 0.001
-    # settings.kl_incr = 0.0  # For VQ 1 token 0.00001 works, but is slow.
+    settings.kl_weight = 0.01  # For VQ 1 token, 0.001
+    settings.kl_incr = 0.0  # For VQ 1 token 0.00001 works, but is slow.
     # settings.kl_weight = 0.01  # For VQ 8 tokens
     # settings.kl_incr = 0.0003  # For VQ 8 token 0.0001 is good but a little slow, but 0.001 is too fast.
 
     # Onehot
     # settings.kl_weight = 0.001
     # settings.kl_incr = 0.00001  # For onehot with 1 token
-    settings.kl_weight = 0.0  # Having a non-zero starting weight is very important to encourage exploration
-    settings.kl_incr = 0.0  # For onhot with 8 tokens .001 is too fast. 0.0001 is good but a little slow.
+    # settings.kl_weight = 0.0  # Having a non-zero starting weight is very important to encourage exploration
+    # settings.kl_incr = 0.0  # For onehot with 8 tokens .001 is too fast. 0.0001 is good but a little slow.
     # num_burnin = 3000
 
     settings.num_distractors = num_distractors
@@ -109,7 +116,7 @@ if __name__ == '__main__':
 
     num_prototypes = 1024
 
-    seeds = [i for i in range(0, 3)]
+    seeds = [i for i in range(0, 5)]
     # comm_types = ['vq', 'cont']
     comm_types = ['vq']
     # if comm_types == ['onehot']:
@@ -118,13 +125,14 @@ if __name__ == '__main__':
     #     settings.kl_weight = 0.01
 
     settings.lr = 0.001  # Default  FIXME
-    # if comm_types == ['onehot']:
-    #     settings.lr = 0.0001
+    if comm_types == ['onehot'] or comm_types == ['proto']:
+        settings.lr = 0.0001
 
     entropy_weight = 0.0
     starting_weight = settings.kl_weight
-    for num_tokens in [4]:
-        for alpha in [0, 0.1, 1, 10]:
+    for num_tokens in [16]:
+        # for alpha in [1, 10, 100]:
+        for alpha in [0, 0.1, 1, 0.5, 1.5, 2, 3, 10, 100]:
             if alpha == 0:
                 variational = True
                 # settings.kl_weight = 0.0
@@ -143,5 +151,6 @@ if __name__ == '__main__':
                         np.random.seed(seed)
                         torch.manual_seed(seed)
                         # settings.kl_weight = starting_weight
+                        # savepath = 'saved_models/' + field_setup + '/trainfrac' + str(train_fraction) + '/' + speaker_type + '/alpha' + str(settings.alpha) + '/' + str(num_tokens) + 'tok/klweight' + str(settings.kl_weight) + '/seed' + str(seed) + '/'
                         savepath = 'saved_models/' + field_setup + '/trainfrac' + str(train_fraction) + '/' + speaker_type + '/alpha' + str(settings.alpha) + '/' + str(num_tokens) + 'tok/klweight' + str(settings.kl_weight) + '/seed' + str(seed) + '/'
                         run_trial()

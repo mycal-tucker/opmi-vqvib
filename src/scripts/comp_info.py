@@ -5,6 +5,7 @@ from src.models.vq import VQ
 from src.models.listener import Listener
 from src.models.team import Team
 import torch
+from src.models.proto import ProtoNetwork
 import torch.nn as nn
 import torch.optim as optim
 import os
@@ -32,7 +33,7 @@ def run_seed(speaker, decoder, team):
         optimizer.step()
         running_mse = running_mse * 0.95 + 0.05 * loss.item()
     print("Distortion", running_mse)
-    complexity = get_info(team, train_data, targ_dim=comm_dim, glove_data=glove_data, num_epochs=200)
+    complexity = get_info(team, train_data, targ_dim=comm_dim, glove_data=glove_data, num_epochs=1000)
     print("Complexity", complexity)
     return running_mse, complexity
 
@@ -57,6 +58,8 @@ def run():
         elif speaker_type == 'onehot':
             speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=True, num_simultaneous_tokens=num_tok,
                           variational=True, num_imgs=1)
+        elif speaker_type == 'proto':
+            speaker = ProtoNetwork(feature_len, comm_dim, num_layers=3, num_protos=1024, variational=True)
         listener = Listener(feature_len)
         team = Team(speaker, listener, decoder)
         team.load_state_dict(torch.load(checkpoint_dir + '/model.pt'))
@@ -82,9 +85,9 @@ if __name__ == '__main__':
     vae.to(settings.device)
     batch_size = 256
 
-
     settings.distinct_word = False
     settings.num_distractors = 0
+    settings.learned_marginal = False
     settings.entropy_weight = 0
     settings.kl_weight = 0
     settings.epoch = 0
@@ -92,15 +95,15 @@ if __name__ == '__main__':
 
     feature_len = 512
     fieldname = 'vg_domain'
-    speaker_type = 'vq'
+    speaker_type = 'proto'
     comm_dim = 1024 if speaker_type == 'onehot' else 64
     entropyweight = '0.0'
-    alpha = 10
-    num_tok = 8
+    alpha = 0.1
+    num_tok = 0.1
     seeds = [0, 1, 2, 3, 4]
 
     glove_data = get_glove_vectors(comm_dim)
 
     base = '/'.join(['saved_models', fieldname, 'trainfrac1.0', speaker_type, 'alpha' + str(alpha),
-                     str(num_tok) + 'tok', 'entropyweight0.0'])
+                     str(num_tok) + 'tok', 'klweight0.0'])
     run()

@@ -15,7 +15,7 @@ def plot_diff():
         diff = [[t - o for o, t in zip(o_data, t_data)] for o_data, t_data in zip(ood_data, train_data)]
         diffs.extend(diff)
         setup_len = len(diff)
-        sizes.extend([small_size * (4 / idx) for _ in diff])
+        sizes.extend([small_size * 2 for _ in diff])
         idx += 1
     labels = ['$C=2$'] + ['' for _ in range(setup_len - 1)] + ['$C=16$'] + ['' for _ in range(setup_len - 1)] + [
         '$C=32$'] + ['' for _ in range(setup_len - 1)]

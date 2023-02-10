@@ -30,6 +30,7 @@ def get_info(model, dataset, targ_dim, glove_data=None, num_epochs=200, batch_si
     mine_net = Net(512, targ_dim)
     mine_net.to(settings.device)
     optimizer = optim.Adam(mine_net.parameters())
+    running_loss = 0
     for epoch in range(num_epochs):
         speaker_obs, _, _, _ = gen_batch(dataset, batch_size, fieldname='topname', glove_data=glove_data)
         with torch.no_grad():
@@ -44,6 +45,9 @@ def get_info(model, dataset, targ_dim, glove_data=None, num_epochs=200, batch_si
         loss = -ret  # maximize
         loss.backward()
         optimizer.step()
+        running_loss = 0.95 * running_loss + 0.05 * loss.item()
+        if epoch % 100 == 0:
+            print(running_loss)
     # Now evaluate the mutual information instead of actively training.
     summed_loss = 0
     num_eval_epochs = 20

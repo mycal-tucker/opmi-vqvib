@@ -1,43 +1,87 @@
-import torch
-import numpy as np
 import random
-import src.settings as settings
-from src.data_utils.read_data import get_feature_data, get_glove_vectors
-from src.data_utils.helper_fns import gen_batch, get_entry_for_labels, get_unique_by_field, get_rand_entries, get_unique_labels
-from src.models.decoder import Decoder
-from src.models.listener import Listener
-from src.models.mlp import MLP
-from src.models.team import Team
-from src.models.vae import VAE
-from src.models.vq import VQ
-from sklearn.decomposition import PCA
+
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import numpy as np
+import torch
+from sklearn.decomposition import PCA
+from sklearn.manifold import MDS
+
+import src.settings as settings
+from src.data_utils.helper_fns import gen_batch, get_rand_entries, get_unique_labels, get_glove_embedding
+from src.data_utils.read_data import get_feature_data, get_glove_vectors
+from src.models.vae import VAE
+from src.scripts.main import get_embedding_alignment
+
+from sklearn.metrics import euclidean_distances
 
 
-def get_ec_words(dataset, team):
+def get_ec_words(dataset, team, num_examples):
     # Given a dataset and a team, returns a list of EC comms for some entries in the data,
     # as well as the English words for each of those entries.
-    comms = []
-    words = []
-    num_examples = 100
+    word_to_comms = {}
     for targ_idx in range(num_examples):
         word = dataset[fieldname][targ_idx]
-        if word in words:
-            continue
-        words.append(word)
+        if word not in word_to_comms.keys():
+            word_to_comms[word] = []
+        # if word in words:
+        #     continue
+        # words.append(word)
         speaker_obs, _, _, _ = gen_batch(dataset, 1, fieldname, vae=vae,
                                          see_distractors=settings.see_distractor, glove_data=glove_data,
                                          num_dist=0, preset_targ_idx=targ_idx)
         # Now get the EC for that speaker obs
         with torch.no_grad():
             comm, _, _ = team.speaker(speaker_obs)
-            comms.append(comm.detach().cpu().numpy())
+            np_comm = comm.detach().cpu().numpy()
+            # comms.append(np_comm)
+            word_to_comms[word].append(np_comm)
+    # print("Words", words)
+    # Get the average comm for each word.
+    comms = []
+    words = []
+    # Use them all
+    # for word, matching_comms in word_to_comms.items():
+    #     for c in matching_comms:
+    #         words.append(word)
+    #         comms.append(c)
+    # Do the average
+    for word, matching_comms in word_to_comms.items():
+        stacked_comms = np.vstack(matching_comms)
+        if len(stacked_comms.shape) > 2:
+            stacked_comms = stacked_comms.squeeze(1)
+        avg_comm = np.mean(stacked_comms, axis=0)
+        comms.append(avg_comm)
+        words.append(word)
+    return np.vstack(comms), words
+
+
+def get_translated_english(dataset, num_examples, embed_to_tok):
+    comms = []
+    words = []
+    for targ_idx in range(num_examples):
+        word = dataset[fieldname][targ_idx]
+        if word in words:
+            continue
+        try:
+            embedding = get_glove_embedding(glove_data, word).to_numpy()
+        except AttributeError:
+            print("No glove for", embedding)
+            continue
+        token = embed_to_tok.predict(np.expand_dims(embedding, 0))
+        comms.append(token)
+        words.append(word)
     return np.array(comms).squeeze(1), words
 
 
 def run():
     base = 'saved_models/topname/trainfrac0.2/'
     basepath = '/'.join([base, 'vq', 'alpha' + str(alpha), str(num_tok) + 'tok', 'klweight' + str(kl_weight), 'seed' + str(test_seed)]) + '/'
+    font = {'family': 'normal',
+            'size': 20}
+    plt.rc('font', **font)
+    # fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(10, 7))
 
     random.seed(test_seed)
     np.random.seed(test_seed)
@@ -48,21 +92,85 @@ def run():
     ood_data = get_feature_data(features_filename, excluded_names=train_responses)
     # Now load the model
     team = torch.load(basepath + str(99999) + '/model_obj.pt')
-    train_comms, train_words = get_ec_words(train_split, team)
-    ood_comms, ood_words = get_ec_words(ood_data, team)
+    train_comms, train_words = get_ec_words(train_split, team, num_examples=110)
+    print("Ec words", train_words)
+    ood_comms, ood_words = get_ec_words(ood_data, team, num_examples=100)
+    align_dataset = get_rand_entries(train_split, 1000)  # FIXME: probably want more than 10.
+    tok_to_embed, embed_to_tok, _, _, _ = get_embedding_alignment(team, align_dataset, glove_data, fieldname='topname')
+
+    viz_seed = 2
+    random.seed(viz_seed)
+    np.random.seed(viz_seed)
+    torch.manual_seed(viz_seed)
+
+    # mds_embedder = MDS(n_components=2)
+    # # Hacky, but to visualize all the points around a cluster, we need to add noise to spread them out a tiny bit.
+    # catted = np.random.normal(train_comms, 0.0)
+    # similarities = euclidean_distances(catted.astype(np.float64))
+    # transformed = mds_embedder.fit_transform(similarities)
+    # for i, word in enumerate(train_words):
+    #     ax.annotate(word, (transformed[i, 0], transformed[i, 1]), color='b', size=20)
+    # plt.show()
+
+
     pca = PCA(n_components=2)  # For viz
     train_pca_comms = pca.fit_transform(train_comms)
-
-    fig, ax = plt.subplots()
-    ax.scatter(train_pca_comms[:, 0], train_pca_comms[:, 1], c='b')
+    # print("Train comms", train_pca_comms)
+    skip_words = ['skier', 'van', 'flower', 'tent', 'dresser', 'bus', 'rug']
+    ax.scatter(train_pca_comms[:, 0], train_pca_comms[:, 1], c='w', s=50)
     for i, word in enumerate(train_words):
-        ax.annotate(word, (train_pca_comms[i, 0], train_pca_comms[i, 1]))
+        if word in skip_words:
+            continue
+        ax.annotate(word, (train_pca_comms[i, 0], train_pca_comms[i, 1]), color='b', size=20)
+    # OOD EC
     ood_pca_comms = pca.transform(ood_comms)
-    ax.scatter(ood_pca_comms[:, 0], ood_pca_comms[:, 1], c='r')
+    ood_skip_words = ['dugout', 'marina', 'hood', 'crib', 'hat', 'cow', 'glove', 'horse', 'bridge', 'giraffe', 'zebra']
     for i, word in enumerate(ood_words):
-        ax.annotate(word, (ood_pca_comms[i, 0], ood_pca_comms[i, 1]))
+        if word in ood_skip_words:
+            continue
+        ax.annotate(word, (ood_pca_comms[i, 0], ood_pca_comms[i, 1]), color='r', size=20)
+    # Get some english translation.
+    # translated_eng, translated_words = get_translated_english(train_split, 100, embed_to_tok)
+    # print("Eng words", translated_words)
+    # eng_pca_comms = pca.transform(translated_eng)
+    # for i, word in enumerate(translated_words):
+    #     if word in skip_words + ['coat', 'tent']:
+    #         continue
+    #     ax.annotate(word, (eng_pca_comms[i, 0], eng_pca_comms[i, 1]), color='g', size=20)
+    # red_patch = mpatches.Patch(color='blue', label='EC')
+    red_patch = mpatches.Patch(color='blue', label='Train EC')
+    blue_patch = mpatches.Patch(color='red', label='OOD EC')
+    # blue_patch = mpatches.Patch(color='green', label='Translated Eng.')
+    plt.legend(handles=[red_patch, blue_patch])
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    plt.xlabel('PCA 1')
+    plt.ylabel('PCA 2')
+    plt.tight_layout()
+    plt.savefig('ood_EC_embeddings' + '_alpha' + str(alpha) + '.png', dpi=300)
+    plt.savefig('ood_EC_embeddings' + '_alpha' + str(alpha) + '.pdf')
+    # plt.savefig('eng_EC_embeddings' + str(test_seed) + '_alpha' + str(alpha) + '.png', dpi=300)
+    # plt.savefig('eng_EC_embeddings' + str(test_seed) + '_alpha' + str(alpha) + '.pdf')
     plt.show()
-    # TODO: repeat for ood data. And maybe color things differently or something.
+    plt.close()
+
+    # Now let's measure some distances
+    # ec_dists = np.zeros((len(train_comms), len(train_comms)))
+    # eng_dists = np.zeros_like(ec_dists)
+    # for i, ec1 in enumerate(train_comms):
+    #     word1 = train_words[i]
+    #     emb1 = get_glove_embedding(glove_data, word1)
+    #     for j, ec2 in enumerate(train_comms):
+    #         dist = np.linalg.norm(ec1 - ec2)
+    #         ec_dists[i, j] = dist
+    #         word2 = train_words[j]
+    #         emb2 = get_glove_embedding(glove_data, word2)
+    #         emb_dist = np.linalg.norm(emb1 - emb2)
+    #         eng_dists[i, j] = emb_dist
+    # print(ec_dists)
+    # for ec_dist, eng_dist in zip(ec_dists, eng_dists):
+    #     plt.scatter(eng_dist, ec_dist)
+    # plt.show()
 
 
 if __name__ == '__main__':
@@ -81,7 +189,7 @@ if __name__ == '__main__':
     settings.alpha = 0
     settings.distinct_words = False
     settings.entropy_weight = 0.0
-    settings.max_num_align_data = 1
+    settings.max_num_align_data = 100
 
     comm_dim = 64
     features_filename = 'data/features_nobox.csv'
@@ -96,7 +204,7 @@ if __name__ == '__main__':
     vae.to(settings.device)
 
     kl_weight = 0.01
-    alpha = 10
+    alpha = 0.5
     test_seed = 0
     num_tok = 4
 

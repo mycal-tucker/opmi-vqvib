@@ -18,9 +18,12 @@ from src.models.team import Team
 from src.models.vae import VAE
 from src.models.vq import VQ
 from src.models.mlp import MLP
+from src.models.proto import ProtoNetwork
 from src.utils.mine import get_info
 from src.utils.plotting import plot_metrics, plot_naming, plot_scatter
 from src.utils.performance_metrics import PerformanceMetrics
+
+import time
 
 
 def evaluate(model, dataset, batch_size, vae, glove_data, fieldname, num_dist=None):
@@ -94,11 +97,17 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, fieldna
             tensor_token = torch.Tensor(token).to(settings.device)
             nosnap_prediction = model.pred_from_comms(tensor_token, listener_obs)
             # Snap the token to the nearest acceptable communication token
-            tensor_token = model.speaker.snap_comms(tensor_token)
-            snap_prediction = model.pred_from_comms(tensor_token, listener_obs)
+            if isinstance(model.speaker, ProtoNetwork):
+                snap_prediction = None
+            else:
+                tensor_token = model.speaker.snap_comms(tensor_token)
+                snap_prediction = model.pred_from_comms(tensor_token, listener_obs)
         nosnap_pred_labels = np.argmax(nosnap_prediction.detach().cpu().numpy(), axis=1)
         num_nosnap_correct += np.sum(nosnap_pred_labels == labels)
-        snap_pred_labels = np.argmax(snap_prediction.detach().cpu().numpy(), axis=1)
+        if snap_prediction is not None:
+            snap_pred_labels = np.argmax(snap_prediction.detach().cpu().numpy(), axis=1)
+        else:
+            snap_pred_labels = -1
         num_snap_correct += np.sum(snap_pred_labels == labels)
         num_total += num_nosnap_correct.size
 
@@ -280,6 +289,7 @@ def eval_model(model, vae, comm_dim, train_data, val_data, viz_data, glove_data,
     # get_probs(model.speaker, train_data)
     # Or we can use MINE to estimate complexity and informativeness.
     if calculate_complexity:
+        print("Eval complexity over tons of batches!!! FIXME")
         train_complexity = get_info(model, train_data, targ_dim=comm_dim, glove_data=glove_data, num_epochs=200)
         # val_complexity = get_info(model, val_features, targ_dim=comm_dim, comm_targ=True)
         val_complexity = None
@@ -396,6 +406,7 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
         if epoch > burnin_epochs:
             settings.kl_weight += settings.kl_incr
         speaker_obs, listener_obs, labels, _ = gen_batch(train_data, batch_size, fieldname, vae=vae, glove_data=glove_data, see_distractors=settings.see_distractor)
+        start_time = time.time()
         optimizer.zero_grad()
         outputs, speaker_loss, info, recons = model(speaker_obs, listener_obs)
 
@@ -413,6 +424,9 @@ def train(model, train_data, val_data, viz_data, glove_data, vae, savepath, comm
         # print("Recons loss fraction:\t", settings.alpha * recons_loss.item() / loss.item())
         loss.backward()
         optimizer.step()
+
+        end_time = time.time()
+        # print("Elapsed time", end_time - start_time)
 
         # Metrics
         pred_labels = np.argmax(outputs.detach().cpu().numpy(), axis=1)

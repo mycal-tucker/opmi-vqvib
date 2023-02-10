@@ -23,8 +23,9 @@ def gen_plots(basepath):
             print("Path doesn't exist", seed_dir)
             continue
         list_of_files = os.listdir(seed_dir)
-        last_seed = max([int(f) for f in list_of_files])
-        last_seed = 99999  # FIXME
+        # last_seed = 99999 if 'topname' in fieldname else 19999
+        last_seed = 99999 if 'topname' in fieldname else 19999
+        # print("Using checkpoint", last_seed)
         try:
             for i, metric_path in enumerate(full_paths):
                 metric = PerformanceMetrics.from_file(seed_dir + str(last_seed) + '/' + metric_path)
@@ -59,18 +60,25 @@ def gen_plots(basepath):
     #                          savepath=basepath + labels[idx] + str(eng_cand_idx) + '_syn_eng_comp.png')
     # Add English data, gathered from english_analysis.py
     good_comps = []
-    for c in all_complexities[0]:
+    good_infos = []
+    for i, c in enumerate(all_complexities[0]):
         if c is not None:
             good_comps.append(c)
-    print("Complexities:\n", ', '.join([str(np.round(c, 3)) for c in good_comps]))
+            good_infos.append(all_informativeness[0][i])
+    # print("Complexities:\n", ', '.join([str(np.round(c, 3)) for c in good_comps]))
+    # print("Complexities:\n", '\n'.join([str(np.round(c, 3)) for c in good_comps]))
+    # print('\n'.join([str(np.round(c, 3)) for c in good_comps]))
+    # print("Infos:\n", ', '.join([str(np.round(elt, 3)) for elt in good_infos]))
 
     # Get the accuracies at the last measurement.
     good_accs = []
-    for a in all_accs['vq'][0]:
+    for a in all_accs[speaker_type][0]:
         final_epoch = a[-1]
         good_accs.append(final_epoch)
 
     print("Accuracies:\n", ', '.join([str(np.round(a, 3)) for a in good_accs]))
+    # print("Accuracies:\n", '\n'.join([str(np.round(a, 3)) for a in good_accs]))
+    # print('\n'.join([str(np.round(a, 3)) for a in good_accs]))
 
     all_complexities.append([1.9])
     all_informativeness.append([-0.20])
@@ -81,9 +89,7 @@ def gen_plots(basepath):
     # plot_multi_trials([all_complexities, all_eng],
     #                   ['VQ-VIB'],
     #                   sizes, filename=basepath + 'eng_')
-    # plot_multi_metrics(all_accs, labels=['2', '16', '32', 'OOD 16', 'OOD 32'], file_root=basepath + distinct + datasplit)
-    # plot_multi_metrics(snap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'snap_eng_')
-    # plot_multi_metrics(nosnap_eng_accs, labels=['Train Top', 'Train Syn', 'Val Top', 'Val Syn'], file_root=basepath + 'nosnap_eng_')
+    plot_multi_metrics(all_accs, labels=['$C=2$', '$C=16$', '$C=32$'], file_root=basepath + distinct + datasplit)
 
 
 def run():
@@ -96,17 +102,22 @@ if __name__ == '__main__':
     # candidates = [2]
     distinct = 'False'
     candidates = [32]
-    datasplit = 'train'
-    # datasplit = 'val'
+    # datasplit = 'train'
+    datasplit = 'val'
 
     fieldname = 'topname'
+    # fieldname = 'vg_domain'
 
     speaker_type = 'vq'
-    klweight = '0.01'
-    # klweight = '0.0'
-    num_tok = 1
-    # seeds = [0, 1]
+    klweight = '0.01'  # For vq
+    # speaker_type = 'onehot'
+    # klweight = '0.0'  # For onehot
+    # speaker_type = 'proto'
+    # klweight = '0.0'  # For proto
+    num_tok = 8
+    # seeds = [0]
     seeds = [0, 1, 2, 3, 4]
     burnin = 0
-    for alpha in [0, 0.1, 0.5, 1, 1.5, 2, 3, 10]:
+    for alpha in [0, 0.1, 0.5, 1, 1.5, 2, 3, 10, 100]:
+        print("Alpha", alpha)
         run()
