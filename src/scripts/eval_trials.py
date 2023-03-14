@@ -8,6 +8,7 @@ import src.settings as settings
 from src.data_utils.helper_fns import get_unique_labels, get_entry_for_labels, get_unique_by_field, get_rand_entries
 from src.data_utils.read_data import get_feature_data, get_glove_vectors
 from src.models.decoder import Decoder
+from src.models.proto import ProtoNetwork
 from src.models.listener import Listener
 from src.models.mlp import MLP
 from src.models.team import Team
@@ -15,7 +16,7 @@ from src.models.vae import VAE
 from src.models.vq import VQ
 from src.models.vq2 import VQ2
 from src.models.vq_after import VQAfter
-from src.scripts.main import eval_model, get_embedding_alignment, evaluate_with_english
+from src.scripts.main import eval_model, get_embedding_alignment, evaluate_with_english, get_relative_embedding
 from src.utils.performance_metrics import PerformanceMetrics
 from src.utils.plotting import plot_scatter, plot_multi_trials
 
@@ -27,11 +28,15 @@ def eval_run(basepath, num_tok, speaker_type, train_data, alignment_datasets):
 
     complexities = []
     mses = []
-    eng_decoder = torch.load('english_vg_dec64.pt').to(settings.device)
-    eng_listener = torch.load('english_vg_list64.pt').to(settings.device)
-    # checkpoint = checkpoints[-1]
+    # eng_decoder = torch.load('english_vg_dec64.pt').to(settings.device)
+    # eng_listener = torch.load('english_vg_list64.pt').to(settings.device)
+    # eng_decoder = torch.load('english_resp_dec64.pt').to(settings.device)
+    # eng_listener = torch.load('english_resp_list64.pt').to(settings.device)
+    eng_decoder = torch.load('english_resp2_dec64.pt').to(settings.device)
+    eng_listener = torch.load('english_resp2_list64.pt').to(settings.device)
+    checkpoint = checkpoints[-1]
     # checkpoint = 19999
-    checkpoint = 99999
+    # checkpoint = 99999
     print("Evaluating checkpoint", checkpoint)
     # if checkpoint != 19999:
     #     print("Skipping checkpoint", checkpoint)
@@ -50,6 +55,8 @@ def eval_run(basepath, num_tok, speaker_type, train_data, alignment_datasets):
         elif speaker_type == 'onehot':
             speaker = MLP(feature_len, comm_dim, num_layers=3, onehot=True, num_simultaneous_tokens=num_tok,
                           variational=True, num_imgs=1)
+        elif speaker_type == 'proto':
+            speaker = ProtoNetwork(feature_len, comm_dim, num_layers=3, num_protos=1024, variational=True)
         listener = Listener(feature_len)
         decoder = Decoder(comm_dim, feature_len, num_layers=3, num_imgs=1)
         team = Team(speaker, listener, decoder)
@@ -84,15 +91,22 @@ def eval_run(basepath, num_tok, speaker_type, train_data, alignment_datasets):
             if english_fieldname == 'responses':
                 use_top = False
                 dummy_eng = 'topname'
+            # consistency_score = get_relative_embedding(team, align_data, glove_data, train_data, fieldname='responses')
+            # print("consistency percent", consistency_score)
+            # print("Not calculating consistency.")
             tok_to_embed, embed_to_tok, tok_to_embed_r2, embed_to_tok_r2, comm_map = get_embedding_alignment(team, align_data, glove_data,
                                                                                  fieldname=alignment_fieldname)
-            nosnap, snap, ec_to_eng = evaluate_with_english(team, train_data, vae, embed_to_tok, glove_data,
+            nosnap, snap, ec_to_eng = evaluate_with_english(team, train_data, vae,
+                                                            embed_to_tok,
+                                                            # embed_to_tok_fn,
+                                                            glove_data,
                                                             fieldname=experiment_fieldname,
                                                             eng_fieldname=dummy_eng,
                                                             use_top=use_top,
                                                             # num_dist=settings.num_distractors,
-                                                            # eng_dec=eng_decoder,
-                                                            eng_dec=None,  # Set to None because we don't want to bother
+                                                            eng_dec=eng_decoder,
+                                                            # eng_dec=team.decoder,
+                                                            # eng_dec=None,  # Set to None because we don't want to bother
                                                             eng_list=eng_listener,
                                                             tok_to_embed=tok_to_embed,
                                                             use_comm_idx=use_comm_idx, comm_map=comm_map)
@@ -105,6 +119,8 @@ def eval_run(basepath, num_tok, speaker_type, train_data, alignment_datasets):
                 top_eng_to_ec_snap_accs.append(snap)
                 tok_to_embed_r2s.append(tok_to_embed_r2)
                 embed_to_tok_r2s.append(embed_to_tok_r2)
+            # If calculating consistency instead of translation stuff.
+            # top_eng_to_ec_nosnap_accs.append(consistency_score)
     num_runs = len(alignment_datasets)
     return complexities[-1],\
            (np.median(top_ec_to_eng_comm_id_accs), np.std(top_ec_to_eng_comm_id_accs) / np.sqrt(num_runs)),\
@@ -239,8 +255,8 @@ def run():
                 print("Complexities\n", [np.round(e, 3).tolist() for e in all_comps])
                 # print("EC to Eng Comm id mean\n", np.round(all_top_ec_to_eng_comm_ids[0], 3))
                 # print("EC to Eng Comm id std\n", np.round(all_top_ec_to_eng_comm_ids[1], 3))
-                # print("EC to Eng mean\n", np.round(all_top_ec_to_eng[0], 3))
-                # print("EC to Eng std\n", np.round(all_top_ec_to_eng[1], 3))
+                print("EC to Eng mean\n", np.round(all_top_ec_to_eng[0], 3).tolist())
+                print("EC to Eng std\n", np.round(all_top_ec_to_eng[1], 3))
                 print("Eng to EC nosnap mean\n", np.round(all_top_eng_to_ec_nosnap[0], 3).tolist())
                 print("Eng to EC nosnap std\n", np.round(all_top_eng_to_ec_nosnap[1], 3))
                 # print("Eng to EC snap mean\n", np.round(all_top_eng_to_ec_snap[0], 3))
@@ -254,7 +270,7 @@ if __name__ == '__main__':
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    num_rand_trial = 10
+    num_rand_trial = 5  # FIXME: 10
 
     settings.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     settings.see_distractor = False
@@ -910,27 +926,29 @@ if __name__ == '__main__':
     # alignment_dataset = train_data[:num_align_data]
     # alignment_datasets = [train_data[i * num_align_data: (i + 1) * num_align_data] for i in range(3)]
     # Use a dataset generated as one label for each English topname or vg_domain label
-    for num_dist in [1, 15, 31]:
+    for num_dist in [1]:
         settings.num_distractors = num_dist
-        for num_examples in [100]:
+        for num_examples in [1000]:
             for alignment_fieldname in ['topname']:  # What data we use to train the translator
                 for experiment_fieldname in ['topname']:
+                    # for english_fieldname in ['responses']:  # What the english speaker outputs
                     for english_fieldname in ['topname']:  # What the english speaker outputs
                         vae = VAE(512, 32)
                         vae_beta = 0.001
                         vae.load_state_dict(torch.load('saved_models/vae' + str(vae_beta) + '.pt'))
                         vae.to(settings.device)
 
-                        model_types = ['vq']
                         # model_types = ['proto']
+                        model_types = ['vq']
                         # seeds = [i for i in range(10)]
                         seeds = [i for i in range(0, 5)]
+                        # seeds = [i for i in range(5, 10)]
                         kl_weights = [0.01]  # For VQ-VIB
                         # kl_weights = [0.0]
-                        alphas = [0, 0.1, 0.5, 1, 1.5, 2, 3, 10]  # For VQ-VIB
+                        # alphas = [0.1, 0.5, 1, 1.5, 2, 3, 10]  # For VQ-VIB
                         # alphas = [0.1, 1, 10, 100]
-                        # alphas = [0.1]
-                        # alphas = [10]
+                        alphas = [0]
+                        # alphas = [2]
                         # alphas = [0.5, 1.5, 2, 3]
-                        num_tokens = [16]
+                        num_tokens = [1]
                         run()

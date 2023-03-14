@@ -151,7 +151,8 @@ class VQ(nn.Module):
             reshaped = torch.reshape(x, (-1, self.proto_latent_dim))
             mu = self.fc_mu(reshaped)
             logvar = self.fc_var(reshaped)
-            sample = reparameterize(mu, logvar) if not self.eval_mode else mu
+            # sample = reparameterize(mu, logvar) if not self.eval_mode else mu
+            sample = reparameterize(mu, logvar)
             # Quantize the vectors
             output, proto_loss = self.vq_layer(sample, mu, logvar)
             # Regroup the tokens into messages, now with possibly multiple tokens.

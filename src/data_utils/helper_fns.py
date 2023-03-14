@@ -59,8 +59,10 @@ def gen_batch(all_data, batch_size, fieldname, vae=None, glove_data=None, see_di
             # listener_obs = np.vstack(listener_obs)
             # speaker_obs += np.random.normal(0, scale=0.0001, size=speaker_obs.shape)
             # listener_obs += np.random.normal(0, scale=0.0001, size=listener_obs.shape)
+            # FIXME: speaker tensor should go through the VAE
             speaker_tensor, _ = vae(speaker_tensor)
-            listener_tensor, _ = vae(listener_tensor)
+            # listener_tensor, _ = vae(listener_tensor)
+            pass
 
     # speaker_tensor = torch.Tensor(speaker_obs).to(settings.device)
     # listener_tensor = torch.Tensor(listener_obs).to(settings.device)
@@ -126,6 +128,8 @@ def get_embedding_batch(all_data, embed_data, batch_size, fieldname, vae=None):
             sampled_word = np.random.choice(words, p=probs)
         elif fieldname == 'vg_domain':
             sampled_word = all_data['vg_domain'][targ_idx]
+        elif fieldname == 'topname':
+            sampled_word = all_data['topname'][targ_idx]
         elif fieldname == 'vg_obj_name':
             sampled_word = all_data['vg_obj_name'][targ_idx]
         embedding = get_glove_embedding(embed_data, sampled_word)

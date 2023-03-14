@@ -70,7 +70,7 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
         yerr = multi_metrics[2][idx] if len(multi_metrics) == 3 else None
         # Raw data version
         # pcm = ax.scatter(metric_x, metric_y, s=s, label=label)
-        # pcm = ax.scatter(metric_x, metric_y, s=50, color=c, alpha=0.5)
+        # pcm = ax.scatter(metric_x, metric_y, s=50, color=c, alpha=0.5, label=label)
 
 
 
@@ -85,8 +85,8 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
         periodx_std.append(xstd)
         pcm = ax.scatter(xmean, ymean, s=s, label=label, color=c, marker=m)
         plt.errorbar(xmean, ymean, xerr=xstd, yerr=ystd, color=c)
-        # And add a dashed line between the series
         if colors is None:
+            # And add a dashed line between the series
             plt.plot(periodx, periody, 'k--', alpha=1.0)
             print()
             for i in range(len(periodx)):
@@ -101,16 +101,17 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
     xlabel = xlabel if xlabel is not None else 'Complexity (nats)'
     # xlabel = xlabel if xlabel is not None else '$\lambda_I$'
     if plot_eng_comp:
-        # plt.axvline(x=1.9, color='g')
-        # ax.annotate('Eng. topname', (1.95, 0.05), color='g')
-        plt.axvline(x=1.4, color='g')
-        ax.annotate('VG label', (1.45, 0.01), color='g')
+        plt.axvline(x=2.08, color='g')
+        ax.annotate('Eng. responses', (2.08, 0.05), color='g')
+        # plt.axvline(x=1.4, color='g')
+        # ax.annotate('VG label', (1.45, 0.01), color='g')
     # ax.annotate('a)', (1.0, -0.15))
     # ax.annotate('b)', (1.0, 0.9))
-    plt.xlabel(xlabel, size=30)
+    # plt.xlabel(xlabel, size=30)
+    plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.ylim(0.0, 1.0)
-    plt.xlim(0.0, 5.5)
+    # plt.xlim(0.0, 5.5)
     # plt.xlim(0.0, 1.0)
     plt.legend(loc='upper left')
     # plt.xscale("log")

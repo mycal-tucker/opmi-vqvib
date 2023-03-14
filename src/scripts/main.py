@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error
+from scipy import stats
 import random
 
 import src.settings as settings
@@ -75,16 +76,34 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, fieldna
         # Can pick just the topname, or one of the random responses.
         topword = topwords[targ_idx]
         if not use_top:
-            all_responses = list(responses[targ_idx])
-            if len(all_responses) == 1:
-                continue  # Can't use a synonym if we only know one word
-            word = topword
-            num_tries = 0
-            while word in unique_topnames and num_tries < 10:
-                word = random.choice(list(responses[targ_idx]))
-                num_tries += 1
-            if num_tries == 10:
-                continue  # Failed to find a non topname response quickly enough.
+            # all_responses = list(responses[targ_idx])
+            all_responses = responses[targ_idx]
+            words = []
+            probs = []
+            for k, v in all_responses.items():
+                parsed_word = k.split(' ')
+                if len(parsed_word) > 1:
+                    # Skip "words" like "tennis player" etc. because they won't be in glove data
+                    continue
+                words.append(k)
+                probs.append(v)
+            if len(words) == 0:
+                # Failed to find any legal words (e.g., all like "tennis player")
+                continue
+            total = np.sum(probs)
+            probs = [p / total for p in probs]
+            word = np.random.choice(words, p=probs)
+
+            # if len(all_responses) == 1:
+            #     continue  # Can't use a synonym if we only know one word
+            # # This isn't right. We can have the topname
+            # word = topword
+            # num_tries = 0
+            # while word in unique_topnames and num_tries < 10:
+            #     word = random.choice(list(responses[targ_idx]))
+            #     num_tries += 1
+            # if num_tries == 10:
+            #     continue  # Failed to find a non topname response quickly enough.
         else:
             word = topword
         # Create the embedding, and then the token from the embedding.
@@ -122,7 +141,7 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, fieldna
             ec_key = tuple(np.round(ec_comm.detach().cpu().squeeze(dim=0).numpy(), 3))
 
             if use_comm_idx and comm_map.get(ec_key) is None:
-                # print("Using comm idx but couldn't find entry")
+                print("Using comm idx but couldn't find entry")
                 num_unmatched += 1
                 eng_correct += 0.5
                 continue
@@ -172,6 +191,148 @@ def plot_comms(model, dataset, basepath):
     plot_naming(regrouped_data, viz_method='tsne', labels=plot_labels, savepath=basepath + 'training_tsne')
 
 
+# Given a model and a set of anchors, compute the relative encoding position of lots of communication vectors?
+def get_relative_embedding(model, anchor_dataset, glove_data, rel_abs_data, fieldname):
+    # First, compute the anchors
+    num_anchors = 100
+    count = 0
+    model_anchors = []
+    glove_anchors = []
+    itr_count = -1
+    for f, word in zip(anchor_dataset['features'], anchor_dataset[fieldname]):
+        itr_count += 1
+        speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
+        speaker_obs = torch.unsqueeze(speaker_obs, 0)
+        with torch.no_grad():
+            speaker_obs = speaker_obs.repeat(1, 1)
+            comm, _, _ = model.speaker(speaker_obs)
+        try:
+            if fieldname == 'responses':
+                responses = word  # Gross, but true, I think.
+                words = []
+                probs = []
+                for k, v in responses.items():
+                    parsed_word = k.split(' ')
+                    if len(parsed_word) > 1:
+                        # Skip "words" like "tennis player" etc. because they won't be in glove data
+                        continue
+                    words.append(k)
+                    probs.append(v)
+                if len(words) == 0:
+                    # Failed to find any legal words (e.g., all like "tennis player")
+                    continue
+                total = np.sum(probs)
+                probs = [p / total for p in probs]
+                word = np.random.choice(words, p=probs)
+            embedding = get_glove_embedding(glove_data, word).to_numpy()
+        except AttributeError:
+            continue
+        np_comm = np.mean(comm.detach().cpu().numpy(), axis=0)
+        model_anchors.append(np_comm)
+        glove_anchors.append(embedding)
+        count += 1
+        if count >= num_anchors:
+            break
+    # print("Got our anchors")
+    model_anchors = np.array(model_anchors)
+    glove_anchors = np.array(glove_anchors)
+    def get_relative(emb, anchors, cosine_based=False):
+        # Cosine similarity
+        if cosine_based:
+            # For cosine, we use *negative* cosine similarity, because less alignment is further apart.
+            relative_emb = -np.array([np.dot(emb, anchor) / (np.linalg.norm(emb) * np.linalg.norm(anchor)) for anchor in anchors])
+        else: # Instead of being cosine based, do euclidean?
+            relative_emb = np.array([np.linalg.norm(emb.squeeze(0) - anchor) for anchor in anchors])
+
+        # Just sanity check by iterating
+        # emb is 1 x 64
+        # anchors is 100 x 64
+        relatives = []
+        for anchor in anchors:
+            norm1 = np.linalg.norm(emb)
+            norm2 = np.linalg.norm(anchor)
+            relative = np.dot(emb.squeeze(0), anchor) / (norm1 * norm2)
+            relatives.append(relative)
+        return np.transpose(relative_emb)
+    ec_rel = []
+    glove_rel = []
+    for idx in range(len(model_anchors)):
+        rel_ec = get_relative(np.expand_dims(model_anchors[idx], 0), model_anchors)
+        rel_glove = get_relative(np.expand_dims(glove_anchors[idx], 0), glove_anchors, cosine_based=True).squeeze(0)
+        ec_rel.append(rel_ec)
+        glove_rel.append(rel_glove)
+    # Now do the spearman, flatten, etc.
+    res = stats.spearmanr(np.hstack(ec_rel), np.hstack(glove_rel))
+
+    # Evaluate latent space similarity: how often are relative embedding triplets consistent?
+    # consistent_count = 0
+    # for f, word in zip(rel_abs_data['features'], rel_abs_data[fieldname]):
+    #     speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
+    #     speaker_obs = torch.unsqueeze(speaker_obs, 0)
+    #     with torch.no_grad():
+    #         speaker_obs = speaker_obs.repeat(1, 1)
+    #         comm, _, _ = model.speaker(speaker_obs)
+    #     try:
+    #         embedding = get_glove_embedding(glove_data, word).to_numpy()
+    #     except AttributeError:
+    #         continue
+    #
+    #     # Use Euclidean distances for EC, and cosine for Glove.
+    #     rel_comm = get_relative(comm.cpu(), model_anchors)
+    #     # rel_comm = get_relative(comm.cpu(), model_anchors, cosine_based=True).squeeze(0)
+    #     rel_emb = get_relative(np.expand_dims(embedding, 0), glove_anchors, cosine_based=True).squeeze(0)
+    #     # rel_emb = get_relative(np.expand_dims(embedding, 0), glove_anchors, cosine_based=False)
+    #     # Pick two random anchors
+    #     idx1 = int(np.random.random() * len(model_anchors))
+    #     idx2 = int(np.random.random() * len(model_anchors))
+    #     while idx1 == idx2:
+    #         idx2 = int(np.random.random() * len(model_anchors))
+    #     # assert False, "Double check."
+    #     consistent = (rel_comm[idx1] < rel_comm[idx2] and rel_emb[idx1] < rel_emb[idx2]) or\
+    #                  (rel_comm[idx1] > rel_comm[idx2] and rel_emb[idx1] > rel_emb[idx2])
+    #     if consistent:
+    #         consistent_count += 1
+    #     # elif rel_comm[idx1] == rel_comm[idx2]:
+    #     #     print("Exact")
+    #     #     consistent_count += 0.5
+    #     count += 1
+    #     if count == 1000:
+    #         break
+    # print("Consistency fraction", consistent_count / count)
+    # Fit a linear translator for relative to absolute model embeddings
+    # absolute_embeddings = []
+    # relative_embeddings = []
+    # count = 0
+    # for f in rel_abs_data['features']:
+    #     speaker_obs = torch.Tensor(np.array(f)).to(settings.device)
+    #     speaker_obs = torch.unsqueeze(speaker_obs, 0)
+    #     with torch.no_grad():
+    #         speaker_obs = speaker_obs.repeat(1, 1)
+    #         comm, _, _ = model.speaker(speaker_obs)
+    #     absolute_embeddings.append(comm.cpu().numpy())
+    #     relative_embeddings.append(get_relative(comm.cpu(), model_anchors))
+    #     count += 1
+    #     if count == 1000:
+    #         break
+    # # Now learn two linear regressions to map to/from tokens and word embeddings.
+    # relative_embeddings = np.vstack(relative_embeddings)
+    # absolute_embeddings = np.vstack(absolute_embeddings)
+    # reg1 = LinearRegression()
+    # reg1.fit(relative_embeddings, absolute_embeddings)
+    # score = reg1.score(relative_embeddings, absolute_embeddings)
+    # print("R2 score", score)
+    # def embed_to_tok(glove_emb):
+    #     # Given a glove embedding, compute it's relative position for glove, call that it's relative position for
+    #     # the model, and then linear-translate it into and absolute model embedding
+    #     relative_glove = get_relative(glove_emb, glove_anchors)
+    #     abs_emb = reg1.predict(relative_glove)
+    #     return abs_emb
+    # return embed_to_tok
+    # print("Avg correlation", summed_rho / count)
+    # return consistent_count / count
+    # print("correlation p value", res)
+    return res.correlation
+
 def get_embedding_alignment(model, dataset, glove_data, fieldname, test_align_data=None):
     num_tests = 1
     comms = []
@@ -216,7 +377,7 @@ def get_embedding_alignment(model, dataset, glove_data, fieldname, test_align_da
     test_comms = []
     test_embeddings = []
     if test_align_data is None:
-        print("WARNING!")
+        # print("WARNING!")
         test_align_data = dataset
     for f, word in zip(test_align_data['features'], test_align_data[fieldname]):
     # for f, word in zip(dataset['features'], dataset[fieldname]):
