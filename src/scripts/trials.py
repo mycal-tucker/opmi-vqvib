@@ -58,15 +58,15 @@ def run_trial():
 
     train(model, train_data, val_data, viz_data, glove_data, vae=vae, savepath=savepath, comm_dim=comm_dim, fieldname=fieldname, num_epochs=num_epochs,
           batch_size=batch_size, burnin_epochs=num_burnin, val_period=val_period,
-          plot_comms_flag=False, calculate_complexity=True)
+          plot_comms_flag=False, calculate_complexity=False)
 
 
 if __name__ == '__main__':
     feature_len = 512
     settings.see_distractor = False
     num_distractors = 1
-    # num_epochs = 100000  # For hold-out
-    num_epochs = 20000  # For hold-out faster version
+    num_epochs = 100000  # For hold-out
+    # num_epochs = 20000  # For hold-out faster version
     # num_epochs = 20000  # 1000 is way too short, but it's quick for debugging.e
     num_burnin = num_epochs
     # val_period = 10000  # For holdout
@@ -125,7 +125,7 @@ if __name__ == '__main__':
     num_prototypes = 1024  # Normally, 1024
     # num_prototypes = 100
 
-    seeds = [i for i in range(5, 10)]
+    seeds = [i for i in range(0, 1)]
     # comm_types = ['vq', 'cont']
     comm_types = ['onehot']
     # if comm_types == ['onehot']:
@@ -142,9 +142,9 @@ if __name__ == '__main__':
     # entropy_weight = 0.0
     entropy_weight = 0.0
     starting_weight = settings.kl_weight
-    for num_tokens in [2]:
+    for num_tokens in [1]:
         # for alpha in [0.5, 1.5, 2, 3]:
-        for alpha in [0, 0.1, 1, 0.5, 1.5, 2, 3, 10]:
+        for alpha in [0, 0.1, 1, 0.5, 1.5, 2, 3, 10, 100]:
         # for alpha in [0]:
             if alpha == 0:
                 variational = True
@@ -154,7 +154,7 @@ if __name__ == '__main__':
                 #     settings.lr = 0.0001
             settings.alpha = alpha
             # for entropy_weight in [0.0, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06]:
-            for starting_weight in [0.0]:
+            for starting_weight in [0.01]:
                 settings.kl_weight = starting_weight
                 settings.entropy_weight = entropy_weight
                 for seed in seeds:

@@ -93,7 +93,7 @@ def eval_run(basepath, num_tok, speaker_type, train_data, alignment_datasets):
                 dummy_eng = 'topname'
             # consistency_score = get_relative_embedding(team, align_data, glove_data, train_data, fieldname='responses')
             # print("consistency percent", consistency_score)
-            # print("Not calculating consistency.")
+            print("Not calculating consistency.")
             tok_to_embed, embed_to_tok, tok_to_embed_r2, embed_to_tok_r2, comm_map = get_embedding_alignment(team, align_data, glove_data,
                                                                                  fieldname=alignment_fieldname)
             nosnap, snap, ec_to_eng = evaluate_with_english(team, train_data, vae,
@@ -229,22 +229,22 @@ def run():
                     #                   [size for _ in labels],
                     #                   ylabel='Embed to Tok r2',
                     #                   filename='/'.join([basepath + '../', '_'.join([rand_string, str(num_examples), str(num_tok), alignment_fieldname, experiment_fieldname, english_fieldname, 'embed_to_tok_r2'])]))
-                    with open(filename + '.csv', 'a', newline='') as f:
-                        writer = csv.writer(f, delimiter=',')
-                        for i in range(len(seeds)):
-                            writer.writerow([kl_weight, seeds[i], np.round(comps[i], 3),
-                                             np.round(top_ec_to_eng_comm_ids[i][0], 3),
-                                             np.round(top_ec_to_eng_comm_ids[i][1], 3),
-                                             np.round(top_ec_to_engs[i][0], 3),
-                                             np.round(top_ec_to_engs[i][1], 3),
-                                             np.round(top_eng_to_ecs_nosnaps[i][0], 3),
-                                             np.round(top_eng_to_ecs_nosnaps[i][1], 3),
-                                             np.round(top_eng_to_ecs_snaps[i][0], 3),
-                                             np.round(top_eng_to_ecs_snaps[i][1], 3),
-                                             np.round(tok_to_embed_r2s[i][0], 3),
-                                             np.round(tok_to_embed_r2s[i][1], 3),
-                                             np.round(embed_to_tok_r2s[i][0], 3),
-                                             np.round(embed_to_tok_r2s[i][1], 3)])
+                    # with open(filename + '.csv', 'a', newline='') as f:
+                    #     writer = csv.writer(f, delimiter=',')
+                    #     for i in range(len(seeds)):
+                    #         writer.writerow([kl_weight, seeds[i], np.round(comps[i], 3),
+                    #                          np.round(top_ec_to_eng_comm_ids[i][0], 3),
+                    #                          np.round(top_ec_to_eng_comm_ids[i][1], 3),
+                    #                          np.round(top_ec_to_engs[i][0], 3),
+                    #                          np.round(top_ec_to_engs[i][1], 3),
+                    #                          np.round(top_eng_to_ecs_nosnaps[i][0], 3),
+                    #                          np.round(top_eng_to_ecs_nosnaps[i][1], 3),
+                    #                          np.round(top_eng_to_ecs_snaps[i][0], 3),
+                    #                          np.round(top_eng_to_ecs_snaps[i][1], 3),
+                    #                          np.round(tok_to_embed_r2s[i][0], 3),
+                    #                          np.round(tok_to_embed_r2s[i][1], 3),
+                    #                          np.round(embed_to_tok_r2s[i][0], 3),
+                    #                          np.round(embed_to_tok_r2s[i][1], 3)])
                 print("Num align data:", num_examples)
                 print("Alpha:", alpha)
                 print("Alignment fieldname:", alignment_fieldname)
@@ -252,7 +252,7 @@ def run():
                 print("English fieldname:", english_fieldname)
                 print("Num distractors:", settings.num_distractors)
                 print("KL Weights:\n", kl_weights)
-                print("Complexities\n", [np.round(e, 3).tolist() for e in all_comps])
+                # print("Complexities\n", [np.round(e, 3).tolist() for e in all_comps])
                 # print("EC to Eng Comm id mean\n", np.round(all_top_ec_to_eng_comm_ids[0], 3))
                 # print("EC to Eng Comm id std\n", np.round(all_top_ec_to_eng_comm_ids[1], 3))
                 print("EC to Eng mean\n", np.round(all_top_ec_to_eng[0], 3).tolist())
@@ -285,8 +285,8 @@ if __name__ == '__main__':
     settings.entropy_weight = 0.0
     settings.max_num_align_data = 10000
 
+    # comm_dim = 64
     comm_dim = 64
-    # comm_dim = 1024
     features_filename = 'data/features_nobox.csv'
 
     # Load the dataset
@@ -926,28 +926,28 @@ if __name__ == '__main__':
     # alignment_dataset = train_data[:num_align_data]
     # alignment_datasets = [train_data[i * num_align_data: (i + 1) * num_align_data] for i in range(3)]
     # Use a dataset generated as one label for each English topname or vg_domain label
-    for num_dist in [1]:
+    for num_dist in [31]:
         settings.num_distractors = num_dist
-        for num_examples in [1000]:
+        for num_examples in [10, 50, 1000]:
             for alignment_fieldname in ['topname']:  # What data we use to train the translator
                 for experiment_fieldname in ['topname']:
-                    # for english_fieldname in ['responses']:  # What the english speaker outputs
-                    for english_fieldname in ['topname']:  # What the english speaker outputs
+                    for english_fieldname in ['responses']:  # What the english speaker outputs
+                    # for english_fieldname in ['topname']:  # What the english speaker outputs
                         vae = VAE(512, 32)
                         vae_beta = 0.001
                         vae.load_state_dict(torch.load('saved_models/vae' + str(vae_beta) + '.pt'))
                         vae.to(settings.device)
 
-                        # model_types = ['proto']
-                        model_types = ['vq']
+                        # model_types = ['vq']
+                        model_types = ['onehot']
                         # seeds = [i for i in range(10)]
                         seeds = [i for i in range(0, 5)]
-                        # seeds = [i for i in range(5, 10)]
-                        kl_weights = [0.01]  # For VQ-VIB
-                        # kl_weights = [0.0]
-                        # alphas = [0.1, 0.5, 1, 1.5, 2, 3, 10]  # For VQ-VIB
+                        # seeds = [i for i in range(5, 10)]  # For proto.
+                        # kl_weights = [0.01]  # For VQ-VIB
+                        kl_weights = [0.00]
+                        alphas = [0.1, 0.5, 1, 1.5, 2, 3, 10, 100]  # For VQ-VIB
                         # alphas = [0.1, 1, 10, 100]
-                        alphas = [0]
+                        # alphas = [100]
                         # alphas = [2]
                         # alphas = [0.5, 1.5, 2, 3]
                         num_tokens = [1]

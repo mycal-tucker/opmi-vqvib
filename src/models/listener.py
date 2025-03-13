@@ -17,5 +17,5 @@ class Listener(nn.Module):
         embedded_features = self.feature_embedder(features)
         # Get cosine similarities
         cosines = self.cos(embedded_comm, embedded_features)
-        logits = F.log_softmax(cosines, dim=1)
+        logits = F.log_softmax(cosines, dim=1)  # FIXME: I think this is actually wrong...
         return logits

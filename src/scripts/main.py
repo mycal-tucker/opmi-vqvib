@@ -119,8 +119,9 @@ def evaluate_with_english(model, dataset, vae, embed_to_tok, glove_data, fieldna
             if isinstance(model.speaker, ProtoNetwork):
                 snap_prediction = None
             else:
-                tensor_token = model.speaker.snap_comms(tensor_token)
-                snap_prediction = model.pred_from_comms(tensor_token, listener_obs)
+                snap_prediction = nosnap_prediction
+                # tensor_token = model.speaker.snap_comms(tensor_token)
+                # snap_prediction = model.pred_from_comms(tensor_token, listener_obs)
         nosnap_pred_labels = np.argmax(nosnap_prediction.detach().cpu().numpy(), axis=1)
         num_nosnap_correct += np.sum(nosnap_pred_labels == labels)
         if snap_prediction is not None:

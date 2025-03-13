@@ -23,8 +23,8 @@ def gen_plots(basepath):
             print("Path doesn't exist", seed_dir)
             continue
         list_of_files = os.listdir(seed_dir)
-        last_seed = 99999 if 'topname' in fieldname else 19999
-        # last_seed = 19999 if 'topname' in fieldname else 19999  # FIXME
+        # last_seed = 99999 if 'topname' in fieldname else 19999
+        last_seed = 19999 if 'topname' in fieldname else 19999  # FIXME
         # print("Using checkpoint", last_seed)
         try:
             for i, metric_path in enumerate(full_paths):
@@ -60,11 +60,12 @@ def gen_plots(basepath):
     #                          savepath=basepath + labels[idx] + str(eng_cand_idx) + '_syn_eng_comp.png')
     # Add English data, gathered from english_analysis.py
     good_comps = []
-    good_infos = []
     for i, c in enumerate(all_complexities[0]):
         if c is not None:
             good_comps.append(c)
-            good_infos.append(all_informativeness[0][i])
+    good_infos = []
+    for info in train_info:
+        good_infos.append(info[-1])
     # print("Complexities:\n", ', '.join([str(np.round(c, 3)) for c in good_comps]))
     # print("Complexities:\n", '\n'.join([str(np.round(c, 3)) for c in good_comps]))
     # print('\n'.join([str(np.round(c, 3)) for c in good_comps]))
@@ -101,26 +102,26 @@ if __name__ == '__main__':
     # distinct = 'True'
     # candidates = [2]
     distinct = 'False'
-    candidates = [2]
-    datasplit = 'train'
-    # datasplit = 'val'
+    candidates = [32]
+    # datasplit = 'train'
+    datasplit = 'val'
 
     fieldname = 'topname'
     # fieldname = 'vg_domain'
 
+    # speaker_type = 'vq'
+    # klweight = '0.01'  # For vq
     speaker_type = 'vq'
-    klweight = '0.01'  # For vq
-    # speaker_type = 'vq2'
-    # klweight = '0.01'  # For vqvib2
+    klweight = '0.01'  # For vqvib2
     # speaker_type = 'onehot'
     # klweight = '0.0'  # For onehot
     # speaker_type = 'proto'
     # klweight = '0.01'  # For proto
-    num_tok = 2
+    num_tok = 4
     seeds = [0, 1, 2, 3, 4]
     # seeds = [5, 6, 7, 8, 9]
     burnin = 0
-    for alpha in [0.1, 0.5, 1, 1.5, 2, 3, 10, 100]:
+    for alpha in [0, 0.1, 0.5, 1, 1.5, 2, 3, 10, 100]:
     # for alpha in [0]:
         print("Alpha", alpha)
         run()

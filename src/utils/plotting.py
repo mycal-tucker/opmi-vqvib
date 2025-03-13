@@ -49,13 +49,13 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
     #                '$\lambda_I=1.0;$\n$n=1$',
     #                '$\lambda_I=1.0;$\n$n=4$']
     reset_period = 8
-    color_cycle = itertools.cycle(plt.cm.magma(np.linspace(0, 1, 4)))
+    color_cycle = itertools.cycle(plt.cm.magma(np.linspace(0, 1, 5)))
     shape_cycle = itertools.cycle(['o', 's', 'x'])
     periodx = []
     periody = []
     periodx_std = []
     periody_std = []
-    plot_eng_comp = False
+    plot_eng_comp = True
     for metric_x, metric_y, label, s in zip(multi_metrics[0], multi_metrics[1], series_labels, sizes):
         if idx % reset_period == 0:
             c = next(color_cycle)
@@ -79,8 +79,14 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
         ystd = np.std(metric_y)
         xmean = np.mean(metric_x)
         ymean = np.mean(metric_y)
+
+        xmean = -1 * xmean
+
         periodx.append(xmean)
         periody.append(ymean)
+        print()
+        print(metric_y)
+        print("ymean", ymean)
         periody_std.append(xstd)
         periodx_std.append(xstd)
         pcm = ax.scatter(xmean, ymean, s=s, label=label, color=c, marker=m)
@@ -88,10 +94,10 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
         if colors is None:
             # And add a dashed line between the series
             plt.plot(periodx, periody, 'k--', alpha=1.0)
-            print()
-            for i in range(len(periodx)):
-                print(str(periodx[i]) + " (" + str(periodx_std[i]) + ")")
-                # print(str(periody[i]) + " (" + str(periody_std[i]) + ")")
+            # print()
+            # for i in range(len(periodx)):
+            #     print(str(periodx[i]) + " (" + str(periodx_std[i]) + ")")
+            #     # print(str(periody[i]) + " (" + str(periody_std[i]) + ")")
         if yerr is not None:
             plt.errorbar(metric_x, metric_y, yerr=yerr, fmt='o')
         if idx < len(annotations):
@@ -101,8 +107,8 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
     xlabel = xlabel if xlabel is not None else 'Complexity (nats)'
     # xlabel = xlabel if xlabel is not None else '$\lambda_I$'
     if plot_eng_comp:
-        plt.axvline(x=2.08, color='g')
-        ax.annotate('Eng. responses', (2.08, 0.05), color='g')
+        plt.axvline(x=0.16, color='g')
+        ax.annotate('Eng. responses', (0.165, 0.45), color='g')
         # plt.axvline(x=1.4, color='g')
         # ax.annotate('VG label', (1.45, 0.01), color='g')
     # ax.annotate('a)', (1.0, -0.15))
@@ -110,12 +116,18 @@ def plot_multi_trials(multi_metrics, series_labels, sizes, ylabel=None, xlabel=N
     # plt.xlabel(xlabel, size=30)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
-    plt.ylim(0.0, 1.0)
+    plt.ylim(0.0, 0.5)
+    # plt.ylim(0.0, 1.0)
+    # plt.xlim(0.05, 0.40)
+    if plot_eng_comp:
+        # plt.ylim(0.0, 0.5)  # For spearman
+        # plt.xlim(-0.40, -0.10)
+        pass
     # plt.xlim(0.0, 5.5)
     # plt.xlim(0.0, 1.0)
-    plt.legend(loc='upper left')
+    plt.legend(loc='upper right')
     # plt.xscale("log")
-    # plt.legend(loc='lower right')
+    # plt.legend(loc='lower left')
     plt.tight_layout()
     print("Saving to", filename)
     if filename is not None:

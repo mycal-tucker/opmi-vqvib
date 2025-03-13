@@ -173,6 +173,7 @@ class VQ(nn.Module):
     def get_token_dist(self, x):
         assert settings.sample_first, "There's no distribution over protos if you don't sample first."
         with torch.no_grad():
+            x = self.feature_embedder(x)
             for i, layer in enumerate(self.layers):
                 x = layer(x)
                 x = F.relu(x)

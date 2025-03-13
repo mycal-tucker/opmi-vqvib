@@ -10,58 +10,15 @@ def run():
     sizes = []
     colors = []
     small_size = 100
-    ############################################################################
-    #####           Proto
-    ############################################################################
-    n = 'proto'
-    labels.append('$\lambda_I = 0 Proto')
-    alignments.append([0.096, 0.044, 0.037, 0.035, 0.024])
-    infos.append([-0.362, -0.358, -0.356, -0.367, -0.364])
-    sizes.append(small_size)
-
-    labels.append('$\lambda_I = 0.1 Proto')
-    alignments.append([0.097, 0.045, 0.037, 0.026, 0.023])
-    infos.append([ -0.322, -0.373, -0.347, -0.32, -0.323])
-    sizes.append(small_size)
-
-    labels.append('$\lambda_I = 0.5 Proto')
-    alignments.append([0.095, 0.024, 0.038, 0.031, 0.023])
-    infos.append([-0.294, -0.333, -0.294, -0.317, -0.271])
-    sizes.append(small_size)
-
-    labels.append('$\lambda_I = 1.0 Proto')
-    alignments.append([0.302, -0.008, -0.149, 0.077, 0.126])
-    infos.append([ -0.281, -0.331, -0.256, -0.253, -0.265])
-    sizes.append(small_size)
-
-    labels.append('$\lambda_I = 1.5 Proto')
-    alignments.append([0.329, 0.021, -0.056, 0.373, 0.12])
-    infos.append([-0.281, -0.331, -0.256, -0.253, -0.265])
-    sizes.append(small_size)
-
-    labels.append('$\lambda_I = 2.0 Proto')
-    alignments.append([0.346, 0.034, -0.022, 0.352, 0.091])
-    infos.append([ -0.253, -0.326, -0.249, -0.248, -0.246])
-    sizes.append(small_size)
-
-    labels.append('$\lambda_I = 3.0 Proto')
-    alignments.append([0.344, 0.14, -0.002, 0.282, 0.068])
-    infos.append([-0.252, -0.296, -0.244, -0.233, -0.24])
-    sizes.append(small_size)
-
-    labels.append('$\lambda_I = 10.0 Proto')
-    alignments.append([0.361, 0.19, -0.016, 0.266, 0.05])
-    infos.append([-0.225, -0.253, -0.226, -0.208, -0.218])
-    sizes.append(small_size)
 
 
     ############################################################################
     #####           Onehot
     ############################################################################
-    n = 'onehot'
+    # n = 'onehot'
     labels.append('$\lambda_I = 0 Onehot')
     alignments.append([0.093, 0.056, 0.091, 0.091, 0.096])
-    infos.append([-0.35787592064386037, -0.35398460166198664, -0.35506191779680624, -0.3578795228725507, -0.3601705696813769])
+    infos.append([-0.358, -0.354, -0.355, -0.358, -0.360])
     sizes.append(small_size)
 
     labels.append('$\lambda_I = 0.1 Onehot')
@@ -98,13 +55,63 @@ def run():
     alignments.append([0.209, 0.174, 0.111, 0.112, 0.096])
     infos.append([-0.177, -0.215, -0.191, -0.199, -0.216])
     sizes.append(small_size)
+
+    ############################################################################
+    #####           Proto
+    ############################################################################
+    n = 'proto'
+    # labels.append('$\lambda_I = 0 Proto')
+    # alignments.append([0.096, 0.044, 0.037, 0.035, 0.024])
+    # infos.append([-0.362, -0.358, -0.356, -0.367, -0.364])
+    # sizes.append(small_size)
+
+    labels.append('$\lambda_I = 0.1 Proto')
+    alignments.append([0.097, 0.045, 0.037, 0.026, 0.023])
+    infos.append([ -0.322, -0.373, -0.347, -0.32, -0.323])
+    sizes.append(small_size)
+
+    labels.append('$\lambda_I = 0.5 Proto')
+    alignments.append([0.095, 0.024, 0.038, 0.031, 0.023])
+    infos.append([-0.294, -0.333, -0.294, -0.317, -0.271])
+    sizes.append(small_size)
+
+    labels.append('$\lambda_I = 1.0 Proto')
+    alignments.append([0.302, -0.008, -0.149, 0.077, 0.126])
+    infos.append([ -0.281, -0.331, -0.256, -0.253, -0.265])
+    sizes.append(small_size)
+
+    labels.append('$\lambda_I = 1.5 Proto')
+    alignments.append([0.329, 0.021, -0.056, 0.373, 0.12])
+    infos.append([-0.281, -0.331, -0.256, -0.253, -0.265])
+    sizes.append(small_size)
+
+    labels.append('$\lambda_I = 2.0 Proto')
+    alignments.append([0.346, 0.034, -0.022, 0.352, 0.091])
+    infos.append([ -0.253, -0.326, -0.249, -0.248, -0.246])
+    sizes.append(small_size)
+
+    labels.append('$\lambda_I = 3.0 Proto')
+    alignments.append([0.344, 0.14, -0.002, 0.282, 0.068])
+    infos.append([-0.252, -0.296, -0.244, -0.233, -0.24])
+    sizes.append(small_size)
+
+    labels.append('$\lambda_I = 10.0 Proto')
+    alignments.append([0.361, 0.19, -0.016, 0.266, 0.05])
+    infos.append([-0.225, -0.253, -0.226, -0.208, -0.218])
+    sizes.append(small_size)
+
+    labels.append('$\lambda_I = 100.0 Proto')
+    alignments.append([0.376, 0.25, 0.045, 0.3, 0.073])
+    infos.append([-0.212, -0.215, -0.197, -0.188, -0.2])
+    sizes.append(small_size)
+
     ############################################################################
     #####         VQ-VIB  N = 1
     ############################################################################
-    n = 1
+    # n = 1
     labels.append('$\lambda_I = 0; n = 1$')
     alignments.append([0.181, 0.009, 0.033, 0.033, 0.025])
-    infos.append([-0.39741656019806076, -0.353978157233614, -0.35842789156572397, -0.3610487512607027, -0.3579979256632083])
+    infos.append([-0.397, -0.354, -0.358, -0.361, -0.358])
     sizes.append(small_size)
     colors.append('xkcd:blue')
 
@@ -210,7 +217,7 @@ def run():
     # labels.append('$\lambda_I = 0; n = 4$')
     # alignments.append([0.315, 0.014, 0.173, 0.028, 0.028])
     # infos.append(
-    #     [-0.33291103337716754, -0.35574541812638083, -0.31681010496121126, -0.3570997573599156, -0.3498205273278654])
+    #     [-0.333, -0.356, -0.317, -0.358, -0.349])
     # sizes.append(small_size)
     # colors.append('xkcd:blue')
     #
@@ -256,8 +263,187 @@ def run():
     # sizes.append(small_size)
     # colors.append('xkcd:blue')
 
-    labels = ['$n=1$'] + ['' for _ in range(7)] + ['$n=2$'] + ['' for _ in range(7)] + ['$n=4$'] + ['' for _ in range(7)]
-    plot_multi_trials([infos, alignments], labels, sizes, ylabel='Alignment ($\\rho$)', xlabel='Distortion (MSE)', colors=None, filename='spearman_comp.png')
+    ############################################################################
+    #####         VQ-VIB2  n = 1
+    ############################################################################
+    # n = 1
+    # labels.append('$\lambda_I = 0; n = 1$')
+    # alignments.append([])
+    # infos.append([])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 0.1; n = 1$')
+    # alignments.append([0.014, 0.02, 0.014, 0.066, 0.039])
+    # infos.append([ -0.375, -0.364, -0.355, -0.307, -0.318])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 0.5; n = 1$')
+    # alignments.append([0.037, 0.005, 0.024, 0.028, 0.079])
+    # infos.append([ -0.375, -0.364, -0.355, -0.307, -0.318])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 1; n = 1$')
+    # alignments.append([0.205, 0.095, 0.199, 0.17, 0.252])
+    # infos.append([ -0.317, -0.292, -0.293, -0.266, -0.266])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 2.0; n = 1$')
+    # alignments.append([0.233, 0.199, 0.189, 0.174, 0.227])
+    # infos.append([ -0.243, -0.28, -0.225, -0.228, -0.255])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 1.5; n = 1$')
+    # alignments.append([0.268, 0.201, 0.381, 0.225, 0.164])
+    # infos.append([ -0.214, -0.276, -0.226, -0.203, -0.25])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    #
+    #
+    # labels.append('$\lambda_I = 3.0; n = 1$')
+    # alignments.append([0.198, 0.213, 0.285, 0.173, 0.203])
+    # infos.append([  -0.196, -0.281, -0.218, -0.268, -0.22])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 10; n = 1$')
+    # alignments.append([0.227, 0.269, 0.242, 0.251, 0.268])
+    # infos.append([-0.181, -0.22, -0.215, -0.275, -0.183])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    # # Normally don't use 100
+    # labels.append('$\lambda_I = 100; n = 1$')
+    # alignments.append([0.143, 0.204, 0.18, 0.081, -0.027])
+    # infos.append([  -0.132, -0.136, -0.137, -0.134, -0.156])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+
+    ############################################################################
+    #####         VQ-VIB2  n = 2
+    ############################################################################
+    n = 2
+    # labels.append('$\lambda_I = 0; n = 2$')
+    # alignments.append([])
+    # infos.append([])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+
+    # labels.append('$\lambda_I = 0.1; n = 1$')
+    # alignments.append([0.023, 0.033, 0.046, 0.02, 0.013])
+    # infos.append([ -0.375, -0.364, -0.355, -0.307, -0.318])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 0.5; n = 2$')
+    # alignments.append([0.27, 0.225, 0.036, 0.132, 0.131])
+    # infos.append([-0.225, -0.19, -0.355, -0.22, -0.201])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 1; n = 2$')
+    # alignments.append([0.273, 0.126, 0.283, 0.1, 0.17])
+    # infos.append([-0.18, -0.221, -0.224, -0.206, -0.188])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 1.5; n = 2$')
+    # alignments.append([0.178, 0.205, 0.144, 0.21, 0.187])
+    # infos.append([-0.174, -0.221, -0.173, -0.208, -0.191])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 2.0; n = 2$')
+    # alignments.append([0.188, 0.175, 0.15, 0.104, 0.149])
+    # infos.append([-0.163, -0.164, -0.191, -0.189, -0.176])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 3.0; n = 2$')
+    # alignments.append([0.107, 0.137, 0.175, 0.127, 0.035])
+    # infos.append([ -0.156, -0.139, -0.173, -0.146, -0.151])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 10; n = 2$')
+    # alignments.append([0.122, 0.157, 0.186, 0.196, 0.145])
+    # infos.append([-0.125, -0.116, -0.132, -0.117, -0.126])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 100; n = 2$')
+    # alignments.append([0.102, 0.158, 0.152, 0.196, 0.136])
+    # infos.append([-0.104, -0.099, -0.105, -0.1, -0.1])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+
+    ############################################################################
+    #####         VQ-VIB2  n = 4
+    ############################################################################
+    n = 4
+    # labels.append('$\lambda_I = 0; n = 4$')
+    # alignments.append([0.13, 0.181, 0.191, 0.174, 0.202])
+    # infos.append([])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+
+    # labels.append('$\lambda_I = 0.1; n = 1$')
+    # alignments.append([0.023, 0.029, 0.019, 0.007, 0.021])
+    # infos.append([ -0.375, -0.364, -0.355, -0.308, -0.318])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 0.5; n = 4$')
+    # alignments.append([0.27, 0.259, 0.215, 0.089, 0.175])
+    # infos.append([-0.191, -0.176, -0.192, -0.24, -0.197])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 1; n = 4$')
+    # alignments.append([0.087, 0.196, 0.105, 0.167, 0.098])
+    # infos.append([-0.164, -0.153, -0.164, -0.151, -0.171])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 1.5; n = 4$')
+    # alignments.append([0.035, 0.137, 0.146, 0.104, 0.132])
+    # infos.append([-0.143, -0.136, -0.142, -0.142, -0.141])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 2.0; n = 4$')
+    # alignments.append([0.118, 0.121, 0.126, 0.074, 0.109])
+    # infos.append([-0.133, -0.14, -0.136, -0.132, -0.131])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 3.0; n = 4$')
+    # alignments.append([0.124, 0.174, 0.213, 0.142, 0.109])
+    # infos.append([ -0.121, -0.113, -0.124, -0.117, -0.124])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 10; n = 4$')
+    # alignments.append([0.163, 0.144, 0.196, 0.102, 0.133])
+    # infos.append([-0.099, -0.092, -0.099, -0.098, -0.096])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+    #
+    # labels.append('$\lambda_I = 100; n = 4$')
+    # # alignments.append([0.215, 0.259, 0.237, 0.151, 0.219])
+    # alignments.append([0.115, 0.159, 0.137, 0.151, 0.119])
+    # infos.append([-0.082, -0.075, -0.083, -0.08, -0.079])
+    # sizes.append(small_size)
+    # colors.append('xkcd:blue')
+
+    # labels = ['$n=1$'] + ['' for _ in range(7)] + ['$n=2$'] + ['' for _ in range(7)] + ['$n=4$'] + ['' for _ in range(7)]
+    labels = ['Onehot'] + ['' for _ in range(7)] + ['Proto.'] + ['' for _ in range(7)] + ['VQ-VIB$_{\mathcal{N}}$'] + ['' for _ in range(7)]# + ['VQ-VIB$_{\mathcal{C}}$'] + ['' for _ in range(7)]
+    # labels = ['Onehot'] + ['' for _ in range(7)] + ['VQ-VIB$_{\mathcal{N}}$'] + ['' for _ in range(7)] + ['VQ-VIB$_{\mathcal{C}}$'] + ['' for _ in range(7)]
+    plot_multi_trials([infos, alignments], labels, sizes, ylabel='Alignment ($\\rho$)', xlabel='Distortion (MSE)', colors=None, filename='spearman_comp_archs_novqvibc.png')
 
     # labels = ['Onehot'] + ['' for _ in onehot_comps[:-1]] +\
     #          ['Proto.'] + ['' for _ in proto_comps[:-1]] +\
